@@ -225,6 +225,14 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     const listedPr = pulls.find((p: { id: string }) => p.id === pr.id);
     expect(listedPr.cost_usd).toBeCloseTo(0.001);
 
+    // Severity counts + full finding detail for the FINDINGS column/popover
+    // reflect only the grounded (kept) finding, same as the reviews endpoint.
+    expect(listedPr.findings).toEqual({ CRITICAL: 1, WARNING: 0, SUGGESTION: 0 });
+    expect(listedPr.latest_findings).toHaveLength(1);
+    expect(listedPr.latest_findings[0].title).toBe('Hardcoded Stripe secret key');
+    expect(listedPr.latest_findings[0].severity).toBe('CRITICAL');
+    expect(listedPr.latest_findings[0].start_line).toBe(11);
+
     await app.close();
   });
 

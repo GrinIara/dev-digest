@@ -4,12 +4,12 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Toggle, EmptyState } from "@devdigest/ui";
-import type { FindingRecord } from "@devdigest/shared";
+import { Toggle, EmptyState, SeverityBadge, Chip, SEV } from "@devdigest/ui";
+import type { FindingRecord, Severity } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
-import { KEY_TO_ACTION } from "./constants";
-import { visibleFindings } from "./helpers";
+import { KEY_TO_ACTION, SEVERITIES } from "./constants";
+import { tallyBySeverity, visibleFindings } from "./helpers";
 import { s } from "./styles";
 
 export function FindingsPanel({
@@ -26,9 +26,14 @@ export function FindingsPanel({
   const t = useTranslations("prReview");
   const action = useFindingAction();
   const [hideLow, setHideLow] = React.useState(false);
+  const [activeSeverity, setActiveSeverity] = React.useState<Severity | null>(null);
   const [focusIdx, setFocusIdx] = React.useState(0);
 
-  const shown = React.useMemo(() => visibleFindings(findings, hideLow), [findings, hideLow]);
+  const severityCounts = React.useMemo(() => tallyBySeverity(findings), [findings]);
+  const shown = React.useMemo(
+    () => visibleFindings(findings, hideLow, activeSeverity),
+    [findings, hideLow, activeSeverity],
+  );
 
   // j/k navigation + a/d shortcuts on the focused finding (keyboard).
   React.useEffect(() => {
@@ -47,6 +52,28 @@ export function FindingsPanel({
 
   return (
     <div>
+      {findings.length > 0 && (
+        <>
+          <div data-testid="severity-counts" style={s.severityCounts}>
+            {SEVERITIES.filter((sev) => severityCounts[sev] > 0).map((sev) => (
+              <SeverityBadge key={sev} severity={sev} count={severityCounts[sev]} />
+            ))}
+          </div>
+          <div data-testid="severity-filters" style={s.severityFilters}>
+            {SEVERITIES.map((sev) => (
+              <Chip
+                key={sev}
+                active={activeSeverity === sev}
+                color={SEV[sev].c}
+                onClick={() => setActiveSeverity((cur) => (cur === sev ? null : sev))}
+              >
+                {SEV[sev].label}
+              </Chip>
+            ))}
+          </div>
+        </>
+      )}
+
       <div style={s.toolbar}>
         <div style={s.toggleGroup}>
           {t("panel.hideLowConfidence")}

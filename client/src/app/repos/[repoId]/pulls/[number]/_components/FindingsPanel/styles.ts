@@ -2,6 +2,20 @@ import type { CSSProperties } from "react";
 
 /** Co-located styles for FindingsPanel (extracted from inline styles). */
 export const s = {
+  severityCounts: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+  severityFilters: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
   toolbar: {
     display: "flex",
     alignItems: "center",

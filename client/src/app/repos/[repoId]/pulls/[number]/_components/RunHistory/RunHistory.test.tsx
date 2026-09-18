@@ -5,9 +5,9 @@
  * and shows the review score ring.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { RunSummary } from "@devdigest/shared";
+import type { RunSummary, FindingRecord } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 import { RunHistory } from "./RunHistory";
 
@@ -35,10 +35,10 @@ function run(o: Partial<RunSummary>): RunSummary {
   };
 }
 
-function renderRuns(runs: RunSummary[]) {
+function renderRuns(runs: RunSummary[], findingsByRunId?: Map<string, FindingRecord[]>) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <RunHistory runs={runs} onOpenTrace={() => {}} />
+      <RunHistory runs={runs} findingsByRunId={findingsByRunId} onOpenTrace={() => {}} />
     </NextIntlClientProvider>,
   );
 }
@@ -83,5 +83,45 @@ describe("RunHistory — outcome badge", () => {
     renderRuns([run({ status: "done", tokens_in: 100, tokens_out: 50, cost_usd: null })]);
     expect(screen.getByText("150 tok")).toBeInTheDocument();
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
+  });
+});
+
+const FINDING: FindingRecord = {
+  id: "f1",
+  severity: "WARNING",
+  category: "perf",
+  title: "N+1 query in user list endpoint",
+  file: "src/api/users.ts",
+  start_line: 45,
+  end_line: 52,
+  rationale: "Queries the DB once per item in the loop.",
+  suggestion: null,
+  confidence: 0.86,
+  kind: "finding",
+  trifecta_components: null,
+  evidence: null,
+  review_id: "r1",
+  accepted_at: null,
+  dismissed_at: null,
+};
+
+describe("RunHistory — Timeline severity icons + popover", () => {
+  it("shows a severity badge (no plain findings text) when this run's findings are known", () => {
+    renderRuns([run({ findings_count: 1 })], new Map([["run-1", [FINDING]]]));
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.queryByText("1 finding(s)")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the plain findings count when this run's findings aren't loaded", () => {
+    renderRuns([run({ findings_count: 3 })]);
+    expect(screen.getByText("3 finding(s)")).toBeInTheDocument();
+  });
+
+  it("reveals a read-only findings preview on hover, scoped to this run only", async () => {
+    renderRuns([run({ findings_count: 1 })], new Map([["run-1", [FINDING]]]));
+    expect(screen.queryByText("N+1 query in user list endpoint")).not.toBeInTheDocument();
+    fireEvent.mouseOver(screen.getByText("1"));
+    expect(await screen.findByText("N+1 query in user list endpoint")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /accept|dismiss/i })).not.toBeInTheDocument();
   });
 });

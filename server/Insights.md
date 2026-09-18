@@ -22,3 +22,15 @@ Before the "agent run cost" feature (branch `feat/agent-run-cost`), reviewer-cor
 
 ## 2026-09-18 — [Context] `server/src/vendor/shared` and `client/src/vendor/shared` are hand-mirrored, not a single source of truth
 Both packages vendor their own copy of the same Zod contracts (e.g. `contracts/trace.ts`, `contracts/platform.ts`). Every contract change (e.g. adding `cost_usd` to `RunStats`/`RunSummary`/`PrMeta`) must be applied identically to both files by hand — TypeScript won't catch a missed side since they're structurally separate packages, not a shared import. Diff the two files after any shared-contract edit to confirm they match.
+
+## 2026-09-18 — [Pattern] `pulls/status.ts` already had pre-built, tested findings-tally scaffolding — reuse it, don't re-count
+Before the FINDINGS-column feature (branch `feat/agent-run-cost`), `server/src/modules/pulls/status.ts:23` already exported `rollupSeverities(rows: {severity:string}[])`, unit-tested in `server/test/pulls-status.test.ts:52-67`, whose own doc comment (`status.ts:6-10`) explicitly says the PR list should show "a FINDINGS severity breakdown" — pre-built for exactly this feature but never wired into `pulls/routes.ts`. Reused it in the `GET /repos/:id/pulls` handler instead of writing a new tally loop. One catch: it returns lowercase keys (`{critical, warning, suggestion}`), while every other severity-shaped value in the app (the `Severity` Zod enum, `FindingRecord.severity`, the client's `SeverityBadge`/`SEV` map) uses uppercase `CRITICAL`/`WARNING`/`SUGGESTION`. Kept `rollupSeverities` as-is (it's tested) and mapped its lowercase output to uppercase at the call site (`routes.ts`) for the wire contract, rather than changing the helper or introducing a second casing convention on the wire.
+
+## 2026-09-19 — [Context] Follow-up citation: exact file:line for the 2026-09-18 "`repository.ts`'s method param types" entry
+The wrapper is `server/src/modules/reviews/repository.ts:151` (`completeAgentRun(...)`, which forwards to `runRepo.completeAgentRun(this.db, runId, values)` at line 170); the real signature it copies is `server/src/modules/reviews/repository/run.repo.ts:142` (`export async function completeAgentRun(...)`).
+
+## 2026-09-19 — [Context] Follow-up citation: exact file:line for the 2026-09-18 "main is the starter state" entry
+The rule lives in the root `CLAUDE.md:28` ("`main` is the **course starter state**... Lesson/feature work happens in forks, not on `main`"), not in `server/CLAUDE.md` — it's a repo-wide convention documented once at the root.
+
+## 2026-09-19 — [Context] Follow-up citation: exact file:line for the 2026-09-18 "vendor/shared hand-mirrored" entry
+The `PrMeta` fields that must match between the two copies: `score` (`platform.ts:174`), `cost_usd` (`:177`), `findings` (`:180`), `latest_findings` (`:184`) — identical line numbers in both `server/src/vendor/shared/contracts/platform.ts` and `client/src/vendor/shared/contracts/platform.ts`, confirmed via `diff` after this session's `findings`/`latest_findings` additions.
