@@ -26,3 +26,11 @@ export function formatSeconds(ms: number): string {
 export function formatTokens(tokensIn: number, tokensOut: number): string {
   return `${(tokensIn / 1000).toFixed(0)}k→${(tokensOut / 1000).toFixed(1)}k`;
 }
+
+/** Compact USD cost (e.g. "$0.06", "$0.014", "$0.0013"); "—" when unknown
+ *  (never "$0.00" — that would misrepresent missing data as a free run). */
+export function formatCost(usd: number | null): string {
+  if (usd == null) return "—";
+  if (usd === 0) return "$0.00";
+  return `$${Number(usd.toPrecision(2))}`;
+}

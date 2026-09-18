@@ -7,6 +7,14 @@ export function sizeOf(pr: PrMeta): SizeInfo {
   return { size, lines };
 }
 
+/** Compact USD cost (e.g. "$0.06", "$0.014", "$0.0013"); "—" when unknown
+ *  (never "$0.00" — that would misrepresent missing data as a free run). */
+export function formatCost(usd: number | null | undefined): string {
+  if (usd == null) return "—";
+  if (usd === 0) return "$0.00";
+  return `$${Number(usd.toPrecision(2))}`;
+}
+
 /** Compact relative time for the list's UPDATED column (e.g. "3h", "2d"). */
 export function relativeTime(iso: string | null | undefined): string {
   if (!iso) return "—";
