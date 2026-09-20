@@ -25,6 +25,6 @@ Same pattern for `src/app/settings/[section]/page.tsx` → `SettingsView`. Don't
 
 ## Where domain data actually comes from
 
-Every piece of domain data (repos, PRs, agents, reviews, findings, settings) flows through a TanStack Query hook in `src/lib/hooks/*.ts`, which calls the Fastify API via `src/lib/api.ts` — never server-fetched, never fetched directly in a component. This is the `client/CLAUDE.md` convention ("Never `fetch` directly in a component — go through a hook") and it holds with no exceptions found in this codebase.
+Every piece of domain data (repos, PRs, agents, reviews, findings, settings) flows through a TanStack Query hook in `src/lib/hooks/*.ts`, which calls the Fastify API via `src/lib/api.ts` — never server-fetched, never fetched directly in a component. This is the `client/AGENTS.md` convention ("Never `fetch` directly in a component — go through a hook") and it holds with no exceptions found in this codebase.
 
 **Practical implication**: if you're deciding where to put a new server-side data load, there isn't an existing pattern for it in this app yet — you'd be introducing the first one. The default, proven path is still "add a hook in `src/lib/hooks/*`, call it from a `"use client"` component."
