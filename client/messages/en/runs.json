@@ -39,6 +39,7 @@
     "stat": {
       "duration": "DURATION",
       "tokens": "TOKENS",
+      "cost": "COST",
       "findings": "FINDINGS"
     },
     "prompt": {
@@ -80,7 +81,7 @@
     },
     "metric": {
       "acceptRate": "ACCEPT RATE",
-      "dismissRate": "DISMISS RATE",
+      "dismissRate": "REJECT RATE",
       "runs": "RUNS",
       "avgFindingsPerRun": "AVG FINDINGS/RUN",
       "totalCost": "TOTAL COST",
@@ -91,7 +92,7 @@
     "findingOutcomes": "Finding outcomes",
     "outcome": {
       "accepted": "Accepted",
-      "dismissed": "Dismissed",
+      "dismissed": "Rejected",
       "pending": "Pending"
     },
     "sharePct": "({pct}%)",

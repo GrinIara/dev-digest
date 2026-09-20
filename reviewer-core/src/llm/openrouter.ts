@@ -63,6 +63,10 @@ export class OpenRouterProvider implements LLMProvider {
     let tokensIn = 0;
     let tokensOut = 0;
     let costFromApi: number | null = null;
+    // `lastRaw` is always overwritten before use inside the loop below; kept
+    // as `string` (not `string | undefined`) so `parseWithRepair`/the
+    // returned `raw` field don't need a null check.
+    // eslint-disable-next-line no-useless-assignment
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {

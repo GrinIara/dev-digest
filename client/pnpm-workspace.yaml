@@ -1,0 +1,8 @@
+allowBuilds:
+  esbuild: set this to true or false
+  sharp: set this to true or false
+minimumReleaseAgeExclude:
+  - eslint@10.11.0
+onlyBuiltDependencies:
+  - esbuild
+  - sharp

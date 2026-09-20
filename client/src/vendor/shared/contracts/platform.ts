@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { Provider } from './knowledge.js';
+import { Severity } from './findings.js';
+import { FindingRecord } from './review-api.js';
 
 /**
  * Platform / scaffolding DTOs owned by F1:
@@ -170,6 +172,16 @@ export const PrMeta = z.object({
   updated_at: z.string().nullish(),
   // Latest-review score (list endpoint only; null/absent until reviewed).
   score: z.number().int().nullish(),
+  // Sum of cost_usd across every agent run ever executed for this PR (list
+  // endpoint only; runs with unknown cost are ignored, not zeroed).
+  cost_usd: z.number().nullish(),
+  // Severity counts for the PR's LATEST review only (same scope as `score`
+  // above). Null until the PR has been reviewed at least once.
+  findings: z.record(Severity, z.number().int()).nullish(),
+  // Full findings for that same latest review — denormalized here (list
+  // endpoint only) so the FINDINGS-column hover popover needs no extra
+  // request. Null until the PR has been reviewed at least once.
+  latest_findings: z.array(FindingRecord).nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

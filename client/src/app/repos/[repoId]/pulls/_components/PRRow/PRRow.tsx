@@ -4,10 +4,18 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
+import {
+  Icon,
+  Avatar,
+  Badge,
+  CircularScore,
+  SeverityBadge,
+  FindingsHoverPopover,
+  type FindingPreview,
+} from "@devdigest/ui";
 import type { PrMeta } from "@/lib/types";
-import { SIZE_COLOR, STATUS_META } from "../../constants";
-import { relativeTime, sizeOf } from "../../helpers";
+import { SIZE_COLOR, STATUS_META, SEVERITIES } from "../../constants";
+import { formatCost, relativeTime, sizeOf } from "../../helpers";
 import { s } from "../../styles";
 
 export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
@@ -53,11 +61,39 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
           <span style={s.muted}>—</span>
         )}
       </div>
+      <div onClick={(e) => e.stopPropagation()} style={{ cursor: "default" }}>
+        {pr.findings && SEVERITIES.some((sev) => (pr.findings![sev] ?? 0) > 0) ? (
+          <FindingsHoverPopover
+            title={t("list.findingsPopoverTitle", { count: pr.latest_findings?.length ?? 0 })}
+            findings={(pr.latest_findings ?? []).map(
+              (f): FindingPreview => ({
+                severity: f.severity,
+                title: f.title,
+                category: f.category,
+                file: f.file,
+                start_line: f.start_line,
+                confidence: f.confidence,
+                rationale: f.rationale,
+              }),
+            )}
+            trigger={
+              <div style={{ display: "flex", gap: 6 }}>
+                {SEVERITIES.filter((sev) => (pr.findings![sev] ?? 0) > 0).map((sev) => (
+                  <SeverityBadge key={sev} severity={sev} count={pr.findings![sev] ?? 0} compact />
+                ))}
+              </div>
+            }
+          />
+        ) : (
+          <span style={s.muted}>—</span>
+        )}
+      </div>
       <div>
         <Badge dot color={st.c} bg="transparent">
           {t(`list.status.${st.labelKey}`)}
         </Badge>
       </div>
+      <div style={s.updatedCell}>{formatCost(pr.cost_usd)}</div>
       <div style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>
     </div>
   );

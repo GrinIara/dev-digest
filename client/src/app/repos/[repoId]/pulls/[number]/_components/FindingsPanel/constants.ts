@@ -8,6 +8,9 @@ export const SEVERITY_ORDER: Record<string, number> = {
   INFO: 3,
 };
 
+/** Filterable severities, most severe first (matches SEVERITY_ORDER). */
+export const SEVERITIES = ["CRITICAL", "WARNING", "SUGGESTION"] as const;
+
 /** Confidence below this is hidden when "hide low confidence" is on. */
 export const LOW_CONFIDENCE_THRESHOLD = 0.65;
 
