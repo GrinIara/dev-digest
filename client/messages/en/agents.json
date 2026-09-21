@@ -46,6 +46,7 @@
     "tabs": {
       "config": "Config",
       "skills": "Skills",
+      "context": "Context",
       "evals": "Evals",
       "stats": "Stats",
       "ci": "CI"
@@ -82,6 +83,7 @@
     },
     "repoIntel": "Repo intelligence",
     "repoIntelHint": "Inject repo context (repo skeleton, callers of changed symbols, and a 'high blast-radius' note) into this agent's review prompt. On by default. Turning it off sends only the diff — useful for cheap models or self-contained PRs.",
+    "advanced": "Advanced",
     "save": "Save agent",
     "saving": "Saving…",
     "saved": "Saved (v{version})",
@@ -89,9 +91,23 @@
   },
   "skills": {
     "title": "Skills",
-    "enabledCount": "{linked} of {total} enabled",
+    "enabledCount": "{bound} of {total} enabled",
     "filterPlaceholder": "Filter skills…",
-    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach."
+    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Drag to reorder."
+  },
+  "context": {
+    "title": "Context"
+  },
+  "stats": {
+    "title": "Stats",
+    "emptyTitle": "Not enough data yet",
+    "emptyBody": "Agent-level run/accept/cost stats aren't exposed by the API yet."
+  },
+  "ci": {
+    "title": "CI",
+    "runsHeading": "Recent CI runs",
+    "emptyTitle": "No CI runs yet",
+    "emptyBody": "CI run history isn't wired up yet."
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."

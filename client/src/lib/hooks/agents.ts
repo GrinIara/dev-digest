@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Agent, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import type { Agent, AgentSkillLink, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -80,12 +80,48 @@ export function useDeleteAgent() {
   });
 }
 
-/** Dynamic model list for a provider (editor model picker). */
+/** Dynamic model list for a provider (Settings → Feature Models picker). */
 export function useProviderModels(provider: Provider | null | undefined) {
   return useQuery({
     queryKey: ["provider-models", provider],
     queryFn: () => api.get<ModelInfo[]>(`/providers/${provider}/models`),
     enabled: !!provider,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** Dynamic model list merged across every provider (Config tab's cross-provider
+   picker) — each provider's own failure degrades to `[]` server-side, so this
+   never throws just because one provider's key is missing/invalid. */
+export function useAllModels() {
+  return useQuery({
+    queryKey: ["all-models"],
+    queryFn: () => api.get<ModelInfo[]>("/models"),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** This agent's linked skills, ordered (Skills tab's bound/checked state). */
+export function useAgentSkills(agentId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["agent-skills", agentId],
+    queryFn: () => api.get<AgentSkillLink[]>(`/agents/${agentId}/skills`),
+    enabled: !!agentId,
+  });
+}
+
+export interface SetAgentSkillsInput {
+  id: string;
+  /** Full ordered set of bound skill ids — replaces the agent's linked skills. */
+  skillIds: string[];
+}
+
+/** Set/reorder the agent's FULL linked-skill set in one call (Skills tab). */
+export function useSetAgentSkills() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, skillIds }: SetAgentSkillsInput) =>
+      api.post<AgentSkillLink[]>(`/agents/${id}/skills`, { skill_ids: skillIds }),
+    onSuccess: (data, { id }) => qc.setQueryData(["agent-skills", id], data),
   });
 }
