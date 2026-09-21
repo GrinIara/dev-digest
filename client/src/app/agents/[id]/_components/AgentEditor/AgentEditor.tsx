@@ -20,7 +20,10 @@ export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; 
         <Tabs tabs={tabs} value={tab} onChange={onTab} pad="0 24px" />
       </div>
       <div style={s.body}>
-        <ConfigTab agent={agent} />
+        {/* Keyed by agent.id: switching agents should reset ConfigTab's local
+            form state, and React's own recommended fix for "reset state when
+            a prop changes" is to remount via key rather than a sync useEffect. */}
+        <ConfigTab key={agent.id} agent={agent} />
       </div>
     </div>
   );

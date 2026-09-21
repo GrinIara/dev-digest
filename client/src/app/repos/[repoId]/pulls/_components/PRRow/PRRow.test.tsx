@@ -2,16 +2,12 @@
  * PRRow — the list's Cost column shows a compact USD figure, or "—" (never
  * "$0.00") when the PR has no run with known cost yet.
  */
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { PrMeta } from "@/lib/types";
 import messages from "../../../../../../../messages/en/prReview.json";
 import { PRRow } from "./PRRow";
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}));
 
 afterEach(cleanup);
 
@@ -42,6 +38,14 @@ function renderRow(row: PrMeta) {
     </NextIntlClientProvider>,
   );
 }
+
+describe("PRRow — navigation", () => {
+  it("renders as a real, keyboard-reachable link to the PR detail page", () => {
+    renderRow(pr({}));
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("href", "/repos/repo-1/pulls/482");
+  });
+});
 
 describe("PRRow — cost column", () => {
   it("shows a compact cost figure when known", () => {

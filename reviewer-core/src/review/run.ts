@@ -101,8 +101,19 @@ export interface ReviewOutcome {
   dropped: { finding: Finding; reason: string }[];
   /** Which path ran. */
   mode: ReviewMode;
-  /** Prompt assembly (for the run trace). Single-pass: the one call; map-reduce: the whole-diff assembly. */
+  /**
+   * Prompt assembly (for the run trace) — always a REAL assembly that was
+   * actually sent to the LLM. Single-pass: the one call. Map-reduce: the
+   * LAST chunk's assembly (never the whole-diff assembly, which is never
+   * sent in map-reduce mode). For the full per-chunk detail, see
+   * `chunkAssemblies`.
+   */
   assembly: PromptAssembly;
+  /**
+   * Every chunk's actual prompt assembly, in call order. Single-pass has
+   * exactly one entry (same as `assembly`); map-reduce has one per file.
+   */
+  chunkAssemblies: PromptAssembly[];
   /** Per-chunk labels (for the run trace's tool_calls). */
   chunks: { label: string }[];
   tokensIn: number;
@@ -138,13 +149,23 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     task: input.task,
   };
 
-  // Whole-diff assembly is the trace default; overwritten below for single-pass.
-  let assembly: PromptAssembly = assemblePrompt({ ...promptParts, diff: input.diff.raw }).assembly;
-
   const chunks =
     mode === 'map-reduce'
       ? input.diff.files.map((f) => ({ label: f.path, diffText: sliceDiff(input.diff, f.path) }))
       : [{ label: 'all files', diffText: input.diff.raw }];
+
+  // Distinguishing signal: strategy: 'map-reduce' was explicitly requested but
+  // downgraded to single-pass because the diff only touches one file (see
+  // `selectMode`). Without this, callers can't tell an explicit-but-downgraded
+  // run from a normal auto-single-pass run.
+  if (input.strategy === 'map-reduce' && mode === 'single-pass') {
+    emit(
+      'info',
+      'strategy "map-reduce" was explicitly requested but downgraded to single-pass ' +
+        '(diff touches only 1 file)',
+      { downgraded: true, requestedStrategy: 'map-reduce', mode },
+    );
+  }
 
   emit(
     'info',
@@ -154,6 +175,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   );
 
   const partials: Review[] = [];
+  const chunkAssemblies: PromptAssembly[] = [];
   let tokensIn = 0;
   let tokensOut = 0;
   let costUsd: number | null = 0;
@@ -170,7 +192,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
       { file: chunk.label },
     );
     const a = assemblePrompt({ ...promptParts, diff: chunk.diffText });
-    if (mode === 'single-pass') assembly = a.assembly;
+    chunkAssemblies.push(a.assembly);
     const res = await input.llm.completeStructured<Review>({
       model: input.model,
       schema: ReviewSchema,
@@ -209,7 +231,11 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     grounding,
     dropped: ground.dropped,
     mode,
-    assembly,
+    // Real assembly that was actually sent — the last chunk's (map-reduce) or
+    // the only chunk's (single-pass). Never the whole-diff assembly, which is
+    // never sent in map-reduce mode (finding #1).
+    assembly: chunkAssemblies[chunkAssemblies.length - 1]!,
+    chunkAssemblies,
     chunks: chunks.map((c) => ({ label: c.label })),
     tokensIn,
     tokensOut,

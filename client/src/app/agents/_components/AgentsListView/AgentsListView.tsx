@@ -3,7 +3,6 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, EmptyState, ErrorState, Skeleton, Icon } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
@@ -16,7 +15,6 @@ import { s } from "./styles";
 
 export function AgentsListView() {
   const t = useTranslations("agents");
-  const router = useRouter();
   const { data: agents, isLoading, isError, refetch } = useAgents();
   const update = useUpdateAgent();
   const [creating, setCreating] = React.useState(false);
@@ -86,7 +84,7 @@ export function AgentsListView() {
               <AgentCard
                 key={a.id}
                 ag={a}
-                onClick={() => router.push(`/agents/${a.id}?tab=config`)}
+                href={`/agents/${a.id}?tab=config`}
                 onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
               />
             ))}

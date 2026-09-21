@@ -10,15 +10,17 @@ against one shared browser session by `run.ts`.
 
 ## How a flow works
 
-A spec lives in `specs/NN-name.flow.json`:
+A spec lives in `specs/NN-name.flow.json` — this is `01-app-boot.flow.json` verbatim:
 
 ```jsonc
 {
-  "name": "App boots and lands on the seeded repo's PR list",
+  "name": "App boots and lands on a repo's PR list",
+  "description": "Whole-stack smoke, order-independent: the client loads, calls the API for repos, and the root route redirects to /repos/<id>/pulls. The redirect only happens when the API returns at least one repo (zero repos shows an empty state instead), so reaching /pulls + the heading proves client + API + DB are all live. The seeded-PR specifics are asserted in 02.",
   "steps": [
-    { "cmd": ["open", "{BASE}/"],            "label": "load the app root" },
-    { "cmd": ["wait", "--url", "/pulls"],    "label": "root redirects to PRs" },
-    { "cmd": ["wait", "--text", "#482"],     "label": "seeded PR row visible" }
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "initial data fetch settles" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to a repo's PRs (≥1 repo loaded)" },
+    { "cmd": ["wait", "--text", "Pull Requests"], "label": "PR list page heading renders" }
   ]
 }
 ```
@@ -27,8 +29,14 @@ A spec lives in `specs/NN-name.flow.json`:
 - Each `cmd` is passed verbatim to `agent-browser`. A non-zero exit fails the
   step and the flow — so `wait --text` / `wait --url` **are** the assertions
   (they time out and exit non-zero if the condition never holds).
-- Optional `"assert": { "stdoutIncludes": "…" }` adds a substring check on the
-  command's stdout.
+- A step may also be `{ "use": "<fixture>" }`, which splices in the steps from
+  `specs/fixtures/<fixture>.json` in its place — used to share a common step
+  sequence across specs instead of duplicating it. E.g. `02`/`04`/`05` all
+  start with `{ "use": "gotoPr482" }` to navigate from the PR list into PR
+  #482's detail route (see `specs/fixtures/gotoPr482.json`,
+  `specs/flows.md`, `docs/architecture.md`).
+- A flow file with a malformed shape (or a `use` pointing at an unknown
+  fixture) is logged and skipped — it fails just that one flow, not the run.
 - Locators are deterministic only (`--url`, `--text`, `find role|text|label`).
   We never use the AI `chat` command, so runs are stable and key-free.
 
@@ -76,6 +84,13 @@ above). Otherwise prefer the hermetic runner.
 ```sh
 ./scripts/dev.sh          # Postgres + API :3001 + web :3000 (seeded)
 cd e2e && npm install && npm test
+```
+
+Unit tests for the runner's pure helpers (`lib/assert.ts`) run separately and
+need no browser or stack:
+
+```sh
+cd e2e && npm run test:unit
 ```
 
 Env knobs:

@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 /** Co-located styles for AgentCard (extracted from inline styles). */
 export const s = {
   card: (active: boolean, enabled: boolean): CSSProperties => ({
+    position: "relative",
     padding: 14,
     borderRadius: 8,
     cursor: "pointer",
@@ -11,6 +12,18 @@ export const s = {
     opacity: enabled ? 1 : 0.6,
     marginBottom: 10,
   }),
+  /** Full-card navigation overlay (a real <a>, painted below .aboveLink). */
+  cardLink: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 0,
+    borderRadius: 8,
+    color: "inherit",
+    textDecoration: "none",
+  } satisfies CSSProperties,
+  /** Lifts an interactive control (toggle, delete button) above cardLink so
+   *  it stays independently clickable instead of triggering navigation. */
+  aboveLink: { position: "relative", zIndex: 1 } satisfies CSSProperties,
   headerRow: { display: "flex", alignItems: "center", gap: 10 } satisfies CSSProperties,
   iconBox: {
     width: 26,

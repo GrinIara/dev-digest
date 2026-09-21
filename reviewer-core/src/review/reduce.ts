@@ -39,6 +39,14 @@ const VERDICT_RANK: Record<string, number> = {
 /**
  * Merge N partial Reviews (one per mapped file/chunk) into a single Review:
  * concat findings, take the worst verdict, mean score, joined summaries.
+ *
+ * NOTE on `score`: this is the mean of each chunk's MODEL-SELF-REPORTED score,
+ * computed PRE-grounding. It is provisional/advisory only — the one real call
+ * path (`reviewPullRequest` in `review/run.ts`) always overwrites it with
+ * `scoreFromFindings(groundedFindings)` before returning, per this package's
+ * "never trust the model's self-reported score" rule. Callers that use
+ * `reduceReviews` directly (bypassing `reviewPullRequest`) must not treat this
+ * field as final — recompute with `scoreFromFindings` after grounding instead.
  */
 export function reduceReviews(partials: Review[]): Review {
   if (partials.length === 1) return partials[0]!;
@@ -54,7 +62,15 @@ export function reduceReviews(partials: Review[]): Review {
   return { verdict, score, summary, findings };
 }
 
-/** Extract the slice of the unified diff for a single file (for map chunks). */
+/**
+ * Extract the slice of the unified diff for a single file (for map chunks).
+ * Throws if `path` doesn't match any `diff --git` section AND isn't present
+ * in `diff.files` — callers (currently only the map-reduce path in
+ * `review/run.ts`, which always derives `path` from `diff.files`) must pass a
+ * path that's actually in this diff. Silently falling back to the WHOLE diff
+ * here would defeat map-reduce's per-file isolation (each chunk would see
+ * every other file's changes) without any signal that it happened.
+ */
 export function sliceDiff(diff: UnifiedDiff, path: string): string {
   const lines = diff.raw.split('\n');
   const out: string[] = [];
@@ -65,8 +81,11 @@ export function sliceDiff(diff: UnifiedDiff, path: string): string {
     if (capture) out.push(line);
   }
   if (out.length > 0) return out.join('\n');
-  // fallback: synthesize from the file's hunks
+  // fallback: synthesize a minimal header from the file's hunks when the raw
+  // diff text doesn't contain a matching `diff --git` section (e.g. a
+  // hand-built UnifiedDiff in tests) — but only when the file genuinely is
+  // part of this diff.
   const f = diff.files.find((x) => x.path === path);
-  if (!f) return diff.raw;
+  if (!f) throw new Error(`sliceDiff: no file matching path "${path}" found in this diff`);
   return `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}`;
 }

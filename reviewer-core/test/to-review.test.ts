@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Finding, Review, UnifiedDiff } from '@devdigest/shared';
 import { toReviewPayload, gateTriggered, countBlockers } from '../src/index.js';
+import { sanitizeFindingText } from '../src/output/to-review.js';
 
 /**
  * The review EVENT is computed deterministically from finding severities + the
@@ -151,6 +152,82 @@ describe('toReviewPayload — inline comment line anchoring', () => {
     const r = review([findingRange('src/x.ts', 10, 30)]);
     const p = toReviewPayload(r, { failOn: 'critical' });
     expect(p.comments).toEqual([expect.objectContaining({ line: 30 })]);
+  });
+});
+
+/**
+ * Finding #10: LLM-authored finding text is model output whose INPUT includes
+ * untrusted diff/PR content — a successful prompt injection could try to
+ * smuggle a raw HTML tag or a disguised phishing link into a real posted
+ * GitHub comment. `sanitizeFindingText` (and `toReviewPayload`, which applies
+ * it to title/rationale/suggestion) must neutralize both before they reach
+ * `composeBody`/`inlineComments`.
+ */
+describe('sanitizeFindingText', () => {
+  it('escapes raw HTML tags so they render as literal text, not markup', () => {
+    const out = sanitizeFindingText('click <img src=x onerror="alert(1)"> here');
+    expect(out).not.toContain('<img');
+    expect(out).toContain('&lt;img');
+    expect(out).toContain('&gt;');
+  });
+
+  it('neutralizes a <script> pair', () => {
+    const out = sanitizeFindingText('<script>alert(1)</script>');
+    expect(out).not.toMatch(/<script>/);
+    expect(out).not.toMatch(/<\/script>/);
+  });
+
+  it('escapes markdown link syntax so it cannot render as a clickable link', () => {
+    const out = sanitizeFindingText('See [click here](https://evil.example/phish) for details');
+    expect(out).not.toContain('](https://evil.example/phish)');
+    expect(out).toContain('\\[click here\\]\\(https://evil.example/phish\\)');
+  });
+
+  it('escapes markdown image syntax the same way (leading "!" is untouched, brackets/parens are escaped)', () => {
+    const out = sanitizeFindingText('![tracker](https://evil.example/pixel.png)');
+    expect(out).toBe('!\\[tracker\\]\\(https://evil.example/pixel.png\\)');
+  });
+
+  it('leaves plain prose parentheses/brackets alone (only escapes matched link/image constructs)', () => {
+    const out = sanitizeFindingText('This is fine (e.g. an example) and so is [not a link since no parens after]');
+    expect(out).toBe('This is fine (e.g. an example) and so is [not a link since no parens after]');
+  });
+
+  it('is a no-op on plain text', () => {
+    expect(sanitizeFindingText('Nothing suspicious here.')).toBe('Nothing suspicious here.');
+  });
+});
+
+describe('toReviewPayload — sanitizes title/rationale/suggestion before posting', () => {
+  function maliciousFinding(): Finding {
+    return {
+      id: 'f-injected',
+      severity: 'CRITICAL',
+      category: 'security',
+      title: 'Hardcoded secret <img src=x onerror=alert(1)>',
+      file: 'src/x.ts',
+      start_line: 1,
+      end_line: 1,
+      rationale: 'Rotate it. [Click here to fix automatically](https://evil.example/phish)',
+      suggestion: 'See <a href="javascript:alert(1)">this link</a> for a patch',
+    } as Finding;
+  }
+
+  it('sanitizes the summary body', () => {
+    const p = toReviewPayload(review([maliciousFinding()]), { failOn: 'critical' });
+    expect(p.body).not.toContain('<img');
+    expect(p.body).not.toContain('<a href="javascript:alert(1)">');
+    expect(p.body).not.toContain('](https://evil.example/phish)');
+  });
+
+  it('sanitizes inline comment bodies', () => {
+    const diff = diffWith('src/x.ts', [1]);
+    const p = toReviewPayload(review([maliciousFinding()]), { failOn: 'critical', diff });
+    expect(p.comments).toHaveLength(1);
+    const body = p.comments![0]!.body;
+    expect(body).not.toContain('<img');
+    expect(body).not.toContain('<a href="javascript:alert(1)">');
+    expect(body).not.toContain('](https://evil.example/phish)');
   });
 });
 

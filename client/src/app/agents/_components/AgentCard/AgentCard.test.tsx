@@ -47,3 +47,20 @@ describe("AgentCard (smoke)", () => {
     expect(screen.getByText("No description")).toBeInTheDocument();
   });
 });
+
+describe("AgentCard — navigation", () => {
+  it("renders as a real, keyboard-reachable link when href is given", () => {
+    renderWithIntl(<AgentCard ag={AGENT} href="/agents/ag1?tab=config" />);
+    expect(screen.getByRole("link")).toHaveAttribute("href", "/agents/ag1?tab=config");
+  });
+
+  it("renders no link when href is omitted (e.g. the smoke-tested standalone card)", () => {
+    renderWithIntl(<AgentCard ag={AGENT} />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("keeps the delete button clickable above the full-card link overlay", () => {
+    renderWithIntl(<AgentCard ag={AGENT} href="/agents/ag1?tab=config" />);
+    expect(screen.getByRole("button", { name: "Delete agent" })).toBeInTheDocument();
+  });
+});

@@ -2,7 +2,7 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
   Icon,
@@ -20,16 +20,15 @@ import { s } from "../../styles";
 
 export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   const t = useTranslations("prReview");
-  const router = useRouter();
   const [h, setH] = React.useState(false);
   const st = STATUS_META[pr.status] ?? STATUS_META.needs_review!;
   const { size, lines } = sizeOf(pr);
   const reviewed = pr.score != null; // null score ⇒ PR has never been reviewed
   return (
-    <div
+    <Link
+      href={`/repos/${repoId}/pulls/${pr.number}`}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
-      onClick={() => router.push(`/repos/${repoId}/pulls/${pr.number}`)}
       style={s.row(h)}
     >
       <div style={s.rowTitleCell}>
@@ -61,7 +60,13 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
           <span style={s.muted}>—</span>
         )}
       </div>
-      <div onClick={(e) => e.stopPropagation()} style={{ cursor: "default" }}>
+      <div
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        style={{ cursor: "default" }}
+      >
         {pr.findings && SEVERITIES.some((sev) => (pr.findings![sev] ?? 0) > 0) ? (
           <FindingsHoverPopover
             title={t("list.findingsPopoverTitle", { count: pr.latest_findings?.length ?? 0 })}
@@ -95,6 +100,6 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
       </div>
       <div style={s.updatedCell}>{formatCost(pr.cost_usd)}</div>
       <div style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>
-    </div>
+    </Link>
   );
 }

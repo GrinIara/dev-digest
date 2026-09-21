@@ -5,14 +5,17 @@ import { now } from './_shared';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
-  email: text('email').notNull(),
+  // Looked up as if unique everywhere (LocalNoAuthProvider, seed's find-or-create) —
+  // enforce it at the DB level too, not just by convention.
+  email: text('email').notNull().unique(),
   name: text('name').notNull(),
   createdAt: now(),
 });
 
 export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
+  // Same as `users.email` — looked up as if unique (LocalNoAuthProvider, seed).
+  name: text('name').notNull().unique(),
   createdAt: now(),
 });
 
