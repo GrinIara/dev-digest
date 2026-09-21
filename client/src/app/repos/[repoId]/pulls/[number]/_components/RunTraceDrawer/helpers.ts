@@ -34,3 +34,11 @@ export function formatCost(usd: number | null): string {
   if (usd === 0) return "$0.00";
   return `$${Number(usd.toPrecision(2))}`;
 }
+
+/** Cheap client-side token estimate (chars/4) for a single prompt block —
+ *  deliberately NOT the whole-run tokens_in/tokens_out stat, so a reader can
+ *  see how much of the budget one block (e.g. skills) actually costs. */
+export function approxTokenCount(text: string | null | undefined): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
