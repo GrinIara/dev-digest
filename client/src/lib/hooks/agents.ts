@@ -1,7 +1,7 @@
 /* hooks/agents.ts — React Query hooks for the A2 Agents tab + Agent Editor. */
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { Agent, AgentSkillLink, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
 
@@ -124,4 +124,26 @@ export function useSetAgentSkills() {
       api.post<AgentSkillLink[]>(`/agents/${id}/skills`, { skill_ids: skillIds }),
     onSuccess: (data, { id }) => qc.setQueryData(["agent-skills", id], data),
   });
+}
+
+/** agent id -> number of skills currently bound to it. Fires one
+ *  `GET /agents/:id/skills` per visible agent (fine for a small workspace —
+ *  mirrors `useSkillUsageCounts`'s N+1 shape in `hooks/skills.ts`, reimplemented
+ *  locally here rather than imported since that file is owned by a concurrent
+ *  Skills Lab pass). Feeds `AgentCard`'s `skillCount` badge from both the
+ *  Agents list and the Agent Editor's sidebar. */
+export function useAgentSkillCounts(agents: Agent[] | undefined): Map<string, number> {
+  const list = agents ?? [];
+  const results = useQueries({
+    queries: list.map((a) => ({
+      queryKey: ["agent-skills", a.id],
+      queryFn: () => api.get<AgentSkillLink[]>(`/agents/${a.id}/skills`),
+    })),
+  });
+  const counts = new Map<string, number>();
+  list.forEach((a, i) => {
+    const data = results[i]?.data;
+    if (data) counts.set(a.id, data.length);
+  });
+  return counts;
 }

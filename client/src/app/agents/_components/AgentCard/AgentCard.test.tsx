@@ -1,12 +1,21 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Agent } from "@devdigest/shared";
 import messages from "../../../../../messages/en/agents.json";
 import { AgentCard } from "./AgentCard";
 
-afterEach(cleanup);
+const deleteMutate = vi.fn();
+
+vi.mock("../../../../lib/hooks/agents", () => ({
+  useDeleteAgent: () => ({ mutate: deleteMutate, isPending: false }),
+}));
+
+afterEach(() => {
+  cleanup();
+  deleteMutate.mockClear();
+});
 
 const AGENT: Agent = {
   id: "ag1",
@@ -62,5 +71,27 @@ describe("AgentCard — navigation", () => {
   it("keeps the delete button clickable above the full-card link overlay", () => {
     renderWithIntl(<AgentCard ag={AGENT} href="/agents/ag1?tab=config" />);
     expect(screen.getByRole("button", { name: "Delete agent" })).toBeInTheDocument();
+  });
+});
+
+describe("AgentCard — delete confirmation", () => {
+  it("opens a confirm modal instead of a native window.confirm, and only deletes on confirm", () => {
+    renderWithIntl(<AgentCard ag={AGENT} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete agent" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(deleteMutate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Delete"));
+    expect(deleteMutate).toHaveBeenCalledWith("ag1", expect.anything());
+  });
+
+  it("closes the modal without deleting on cancel", () => {
+    renderWithIntl(<AgentCard ag={AGENT} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete agent" }));
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(deleteMutate).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Toggle } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
+import { ConfirmModal } from "@/components/confirm-modal/ConfirmModal";
 import { useDeleteAgent } from "../../../../lib/hooks/agents";
 import { modelColor } from "./helpers";
 import { s } from "./styles";
@@ -31,9 +32,20 @@ export function AgentCard({
   const t = useTranslations("agents");
   const del = useDeleteAgent();
   const color = modelColor(ag.model);
+  const [deleting, setDeleting] = React.useState(false);
   return (
     <div style={s.card(!!active, ag.enabled)}>
       {href && <Link href={href} aria-label={ag.name} style={s.cardLink} />}
+      {deleting && (
+        <ConfirmModal
+          title="Delete agent"
+          body={`Delete agent "${ag.name}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          pending={del.isPending}
+          onConfirm={() => del.mutate(ag.id, { onSuccess: () => setDeleting(false) })}
+          onCancel={() => setDeleting(false)}
+        />
+      )}
       <div style={s.headerRow}>
         <div style={s.iconBox}>
           <Icon.Cpu size={15} />
@@ -45,9 +57,7 @@ export function AgentCard({
           </div>
         )}
         <button
-          onClick={() => {
-            if (window.confirm(`Delete agent "${ag.name}"? This cannot be undone.`)) del.mutate(ag.id);
-          }}
+          onClick={() => setDeleting(true)}
           disabled={del.isPending}
           title="Delete agent"
           aria-label="Delete agent"

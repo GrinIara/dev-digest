@@ -3,7 +3,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { Checkbox, Badge, Skeleton, ErrorState, Icon } from "@devdigest/ui";
+import { Checkbox, Badge, Skeleton, ErrorState, Icon, TextInput } from "@devdigest/ui";
 import type { Agent, Skill } from "@devdigest/shared";
 import { api } from "../../../../../../../lib/api";
 import { useAgentSkills, useSetAgentSkills } from "../../../../../../../lib/hooks/agents";
@@ -11,10 +11,12 @@ import { s } from "./styles";
 
 /**
  * Skills tab — every workspace skill, checkbox = bound to this agent, drag to
- * reorder. This is a deliberately tiny, colocated read of `GET /skills` (not
- * the shared `lib/hooks/skills.ts` file, which the Skills Lab work owns
- * concurrently) — a few duplicated lines here is the right tradeoff for safe
- * parallel work on that file.
+ * reorder (only bound/checked rows are draggable — an unchecked row can still
+ * be a drop *target*, since reordering only matters for bound skills), plus a
+ * name filter box. This is a deliberately tiny, colocated read of `GET
+ * /skills` (not the shared `lib/hooks/skills.ts` file, which the Skills Lab
+ * work owns concurrently) — a few duplicated lines here is the right tradeoff
+ * for safe parallel work on that file.
  */
 export function SkillsTab({ agent }: { agent: Agent }) {
   const t = useTranslations("agents");
@@ -36,6 +38,7 @@ export function SkillsTab({ agent }: { agent: Agent }) {
   const [order, setOrder] = React.useState<string[] | null>(null);
   const [bound, setBound] = React.useState<Set<string> | null>(null);
   const [dragId, setDragId] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState("");
 
   React.useEffect(() => {
     if (order !== null || !skills || !links) return;
@@ -90,28 +93,37 @@ export function SkillsTab({ agent }: { agent: Agent }) {
         <span style={s.count}>{t("skills.enabledCount", { bound: bound.size, total: order.length })}</span>
       </div>
       <div style={s.caption}>{t("skills.orderHint")}</div>
+      <div style={s.filterWrap}>
+        <TextInput value={filter} onChange={setFilter} placeholder={t("skills.filterPlaceholder")} />
+      </div>
       <div style={s.list}>
-        {order.map((id) => {
-          const skill = skillsById.get(id);
-          if (!skill) return null;
-          return (
-            <div
-              key={id}
-              draggable
-              onDragStart={() => setDragId(id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => onDrop(id)}
-              style={dragId === id ? { ...s.row, ...s.rowDragging } : s.row}
-            >
-              <span style={s.handle} aria-hidden="true">
-                <Icon.Menu size={14} />
-              </span>
-              <Checkbox checked={bound.has(id)} onChange={() => toggle(id)} />
-              <span style={s.name}>{skill.name}</span>
-              <Badge>{skill.type}</Badge>
-            </div>
-          );
-        })}
+        {order
+          .filter((id) => {
+            const skill = skillsById.get(id);
+            return !!skill && skill.name.toLowerCase().includes(filter.toLowerCase());
+          })
+          .map((id) => {
+            const skill = skillsById.get(id);
+            if (!skill) return null;
+            const isBound = bound.has(id);
+            return (
+              <div
+                key={id}
+                draggable={isBound}
+                onDragStart={() => isBound && setDragId(id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => onDrop(id)}
+                style={dragId === id ? { ...s.row, ...s.rowDragging } : s.row}
+              >
+                <span style={s.handle} aria-hidden="true">
+                  <Icon.Menu size={14} />
+                </span>
+                <Checkbox checked={isBound} onChange={() => toggle(id)} />
+                <span style={s.name}>{skill.name}</span>
+                <Badge>{skill.type}</Badge>
+              </div>
+            );
+          })}
       </div>
     </div>
   );

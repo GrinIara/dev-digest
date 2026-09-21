@@ -1,7 +1,12 @@
-import type { ReviewStrategy } from "@devdigest/shared";
+import type { CiFailOn, ReviewStrategy } from "@devdigest/shared";
 
 /** Selectable review strategies (labels are i18n'd in the component). */
 export const STRATEGY_VALUES: readonly ReviewStrategy[] = ["single-pass", "map-reduce", "auto"];
+
+/** CI gate policy options — when a CI review blocks/fails (labels i18n'd).
+ *  Moved here from the now-deleted CiTab, which folded into Config's
+ *  Advanced disclosure. */
+export const CI_FAIL_ON_VALUES: readonly CiFailOn[] = ["never", "critical", "warning", "any"];
 
 /** Output-schema options (only one supported in MVP). */
 export const OUTPUT_SCHEMA_VALUE = "Standard findings JSON";

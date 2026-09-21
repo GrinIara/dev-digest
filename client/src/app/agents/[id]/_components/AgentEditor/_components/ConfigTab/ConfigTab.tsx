@@ -3,11 +3,11 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { FormField, TextInput, SelectInput, SearchableSelect, Textarea, Toggle, Button, Icon } from "@devdigest/ui";
-import type { Agent, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import type { Agent, CiFailOn, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
 import { useUpdateAgent, useAllModels } from "../../../../../../../lib/hooks/agents";
 import { useToast } from "../../../../../../../lib/toast";
 import { modelLabel } from "../../../../../../../lib/model-label";
-import { OUTPUT_SCHEMA_VALUE, STRATEGY_VALUES } from "./constants";
+import { CI_FAIL_ON_VALUES, OUTPUT_SCHEMA_VALUE, STRATEGY_VALUES } from "./constants";
 import { s } from "./styles";
 
 /** Composite SearchableSelect value — model ids alone aren't unique once the
@@ -15,8 +15,10 @@ import { s } from "./styles";
    and gets split back into the two real fields on selection/save. */
 const modelKey = (provider: string, id: string) => `${provider}::${id}`;
 
-/** Config tab — name/description/cross-provider model/system-prompt + enabled toggle.
-   `repo_intel` moved to the Context tab, `ci_fail_on` moved to the CI tab. */
+/** Config tab — name/description/cross-provider model/system-prompt + enabled
+   toggle. `repo_intel` and `ci_fail_on` live in the Advanced disclosure here
+   (folded back in from the now-deleted Context/CI tabs — the checklist wants
+   exactly 2 editor tabs, Config and Skills). */
 export function ConfigTab({ agent }: { agent: Agent }) {
   const t = useTranslations("agents");
   const toast = useToast();
@@ -27,6 +29,8 @@ export function ConfigTab({ agent }: { agent: Agent }) {
   const [model, setModel] = React.useState(agent.model);
   const [systemPrompt, setSystemPrompt] = React.useState(agent.system_prompt);
   const [strategy, setStrategy] = React.useState<ReviewStrategy>(agent.strategy);
+  const [repoIntel, setRepoIntel] = React.useState(agent.repo_intel);
+  const [ciFailOn, setCiFailOn] = React.useState<CiFailOn>(agent.ci_fail_on);
   const [enabled, setEnabled] = React.useState(agent.enabled);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
@@ -52,8 +56,9 @@ export function ConfigTab({ agent }: { agent: Agent }) {
     }
   };
 
-  // Friendly labels for the strategy select (values come from constants).
+  // Friendly labels for the strategy/CI-gate selects (values come from constants).
   const strategyOptions = STRATEGY_VALUES.map((v) => ({ value: v, label: t(`config.strategyOptions.${v}`) }));
+  const ciFailOnOptions = CI_FAIL_ON_VALUES.map((v) => ({ value: v, label: t(`config.ciFailOnOptions.${v}`) }));
 
   const save = () =>
     update.mutate(
@@ -66,6 +71,8 @@ export function ConfigTab({ agent }: { agent: Agent }) {
           model,
           system_prompt: systemPrompt,
           strategy,
+          repo_intel: repoIntel,
+          ci_fail_on: ciFailOn,
           enabled,
         },
       },
@@ -120,6 +127,16 @@ export function ConfigTab({ agent }: { agent: Agent }) {
               value={strategy}
               onChange={(v) => setStrategy(v as ReviewStrategy)}
               options={strategyOptions}
+            />
+          </FormField>
+          <FormField label={t("config.repoIntel")} hint={t("config.repoIntelHint")}>
+            <Toggle on={repoIntel} onChange={setRepoIntel} size={16} />
+          </FormField>
+          <FormField label={t("config.ciFailOn")} hint={t("config.ciFailOnHint")}>
+            <SelectInput
+              value={ciFailOn}
+              onChange={(v) => setCiFailOn(v as CiFailOn)}
+              options={ciFailOnOptions}
             />
           </FormField>
         </div>

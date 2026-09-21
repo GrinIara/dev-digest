@@ -1,17 +1,13 @@
-/* AgentEditor — six-tab agent editor: Config / Skills / Context / Evals /
-   Stats / CI. Tab state lives in ?tab= (see AgentEditorPage's VALID_TABS). */
+/* AgentEditor — two-tab agent editor: Config / Skills. Tab state lives in
+   ?tab= (see AgentEditorPage's VALID_TABS). */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Tabs } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
-import { EvalsPanel } from "../../../../../components/evals-panel/EvalsPanel";
 import { ConfigTab } from "./_components/ConfigTab";
 import { SkillsTab } from "./_components/SkillsTab";
-import { ContextTab } from "./_components/ContextTab";
-import { StatsTab } from "./_components/StatsTab";
-import { CiTab } from "./_components/CiTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
@@ -30,10 +26,6 @@ export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; 
             useEffect. */}
         {tab === "config" && <ConfigTab key={agent.id} agent={agent} />}
         {tab === "skills" && <SkillsTab key={agent.id} agent={agent} />}
-        {tab === "context" && <ContextTab key={agent.id} agent={agent} />}
-        {tab === "evals" && <EvalsPanel key={agent.id} ownerKind="agent" ownerId={agent.id} />}
-        {tab === "stats" && <StatsTab key={agent.id} agent={agent} />}
-        {tab === "ci" && <CiTab key={agent.id} agent={agent} />}
       </div>
     </div>
   );

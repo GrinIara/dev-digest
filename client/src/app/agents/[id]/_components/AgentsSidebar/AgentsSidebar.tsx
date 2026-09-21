@@ -7,6 +7,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dropdown } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
+import { useAgentSkillCounts } from "../../../../../lib/hooks/agents";
 import { AgentCard } from "../../../_components/AgentCard";
 
 export function AgentsSidebar({
@@ -22,6 +23,7 @@ export function AgentsSidebar({
   onToggleAgent: (id: string, enabled: boolean) => void;
 }) {
   const router = useRouter();
+  const skillCounts = useAgentSkillCounts(agents);
   return (
     <div
       style={{
@@ -54,6 +56,7 @@ export function AgentsSidebar({
             key={a.id}
             ag={a}
             active={a.id === activeId}
+            skillCount={skillCounts.get(a.id)}
             href={`/agents/${a.id}?tab=${tab}`}
             onToggle={(enabled) => onToggleAgent(a.id, enabled)}
           />

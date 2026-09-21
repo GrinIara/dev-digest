@@ -6,7 +6,8 @@ export const s = {
   header: { display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 } satisfies CSSProperties,
   h2: { fontSize: 18, fontWeight: 700 } satisfies CSSProperties,
   count: { fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
-  caption: { fontSize: 12, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.45 } satisfies CSSProperties,
+  caption: { fontSize: 12, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.45 } satisfies CSSProperties,
+  filterWrap: { marginBottom: 12 } satisfies CSSProperties,
   list: { display: "flex", flexDirection: "column", gap: 6 } satisfies CSSProperties,
   row: {
     display: "flex",

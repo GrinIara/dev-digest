@@ -4,7 +4,6 @@ import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Agent, AgentSkillLink, Skill } from "@devdigest/shared";
 import messages from "../../../../../../messages/en/agents.json";
-import evalMessages from "../../../../../../messages/en/eval.json";
 import { ToastProvider } from "../../../../../lib/toast";
 
 // ---- Mocked hooks/api (this package's convention: mock the hook module, not
@@ -36,14 +35,6 @@ vi.mock("../../../../../lib/api", () => ({
   api: { get: vi.fn(() => Promise.resolve(SKILLS)) },
 }));
 
-vi.mock("../../../../../lib/hooks/eval", () => ({
-  useEvalCases: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
-  useEvalCaseRuns: () => ({ data: [] }),
-  useCreateEvalCase: () => ({ mutate: vi.fn(), isPending: false }),
-  useDeleteEvalCase: () => ({ mutate: vi.fn() }),
-  useRunEvalCase: () => ({ mutate: vi.fn(), isPending: false }),
-}));
-
 import { AgentEditor } from "./AgentEditor";
 
 afterEach(() => {
@@ -71,7 +62,7 @@ function renderWithIntl(ui: React.ReactElement) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <NextIntlClientProvider locale="en" messages={{ agents: messages, eval: evalMessages }}>
+      <NextIntlClientProvider locale="en" messages={{ agents: messages }}>
         <ToastProvider>{ui}</ToastProvider>
       </NextIntlClientProvider>
     </QueryClientProvider>,
@@ -86,22 +77,39 @@ describe("A2 Agent Editor (smoke)", () => {
     expect(screen.getByText("Save agent")).toBeInTheDocument();
   });
 
-  it("renders all six tab labels", () => {
+  it("renders exactly the two tab labels — Config and Skills", () => {
     renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
-    for (const label of ["Config", "Skills", "Context", "Evals", "Stats", "CI"]) {
+    for (const label of ["Config", "Skills"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    for (const label of ["Context", "Evals", "Stats", "CI"]) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
     }
   });
 
-  it("moves strategy behind an Advanced disclosure and drops provider/repo-intel/CI-gate fields", () => {
+  it("moves strategy/repo-intel/CI-gate behind an Advanced disclosure", () => {
     renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
-    // Strategy is collapsed by default.
+    // Collapsed by default.
     expect(screen.queryByText("Review strategy")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText("Advanced"));
-    expect(screen.getByText("Review strategy")).toBeInTheDocument();
-    // Moved to Context/CI tabs — no longer in Config.
     expect(screen.queryByText("Repo intelligence")).not.toBeInTheDocument();
     expect(screen.queryByText("CI gate")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Advanced"));
+    // Folded back into Config now that the Context/CI tabs are gone.
+    expect(screen.getByText("Review strategy")).toBeInTheDocument();
+    expect(screen.getByText("Repo intelligence")).toBeInTheDocument();
+    expect(screen.getByText("CI gate")).toBeInTheDocument();
+  });
+
+  it("saves repo_intel and ci_fail_on alongside the rest of the Config patch", () => {
+    renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
+    fireEvent.click(screen.getByText("Save agent"));
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "ag1",
+        patch: expect.objectContaining({ repo_intel: true, ci_fail_on: "critical" }),
+      }),
+      expect.anything(),
+    );
   });
 });
 
@@ -142,34 +150,21 @@ describe("Skills tab", () => {
 
     expect(setSkillsMutate).toHaveBeenCalledWith({ id: "ag1", skillIds: ["sk1", "sk2"] });
   });
-});
 
-describe("Context tab", () => {
-  it("renders the repo-intel toggle", () => {
-    renderWithIntl(<AgentEditor agent={AGENT} tab="context" onTab={() => {}} />);
-    expect(screen.getByRole("heading", { name: "Context" })).toBeInTheDocument();
-    expect(screen.getByText("Repo intelligence")).toBeInTheDocument();
+  it("filters the rendered rows by name via the filter box", async () => {
+    renderWithIntl(<AgentEditor agent={AGENT} tab="skills" onTab={() => {}} />);
+    await screen.findByText("Security Rubric");
+    fireEvent.change(screen.getByPlaceholderText("Filter skills…"), { target: { value: "style" } });
+    expect(screen.queryByText("Security Rubric")).not.toBeInTheDocument();
+    expect(screen.getByText("Style Convention")).toBeInTheDocument();
   });
-});
 
-describe("CI tab", () => {
-  it("renders the CI gate select and an honest empty state for run history", () => {
-    renderWithIntl(<AgentEditor agent={AGENT} tab="ci" onTab={() => {}} />);
-    expect(screen.getByText("CI gate")).toBeInTheDocument();
-    expect(screen.getByText("No CI runs yet")).toBeInTheDocument();
-  });
-});
-
-describe("Stats tab", () => {
-  it("renders an honest not-enough-data state", () => {
-    renderWithIntl(<AgentEditor agent={AGENT} tab="stats" onTab={() => {}} />);
-    expect(screen.getByText("Not enough data yet")).toBeInTheDocument();
-  });
-});
-
-describe("Evals tab", () => {
-  it("renders the shared EvalsPanel", () => {
-    renderWithIntl(<AgentEditor agent={AGENT} tab="evals" onTab={() => {}} />);
-    expect(screen.getByText("New case")).toBeInTheDocument();
+  it("only makes bound/checked rows draggable", async () => {
+    renderWithIntl(<AgentEditor agent={AGENT} tab="skills" onTab={() => {}} />);
+    await screen.findByText("Security Rubric");
+    const boundRow = screen.getByText("Security Rubric").closest("div[draggable]");
+    const unboundRow = screen.getByText("Style Convention").closest("div[draggable]");
+    expect(boundRow).toHaveAttribute("draggable", "true");
+    expect(unboundRow).toHaveAttribute("draggable", "false");
   });
 });
