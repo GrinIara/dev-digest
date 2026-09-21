@@ -83,6 +83,24 @@ export const EvalCase = z.object({
 });
 export type EvalCase = z.infer<typeof EvalCase>;
 
+// A single persisted `eval_runs` row (1:1 with the DB table) — the "Run on
+// evals" action's result for one eval case. NOT the same shape as `EvalRun`
+// above, which is an aggregate summary across many traces/cases (a future
+// "run all cases for this owner" view); that contract is left untouched.
+export const EvalCaseRun = z.object({
+  id: z.string(),
+  case_id: z.string(),
+  ran_at: z.string(),
+  actual_output: z.unknown(),
+  pass: z.boolean().nullable(),
+  recall: z.number().nullable(),
+  precision: z.number().nullable(),
+  citation_accuracy: z.number().nullable(),
+  duration_ms: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+});
+export type EvalCaseRun = z.infer<typeof EvalCaseRun>;
+
 // ---- Memory ----
 export const MemoryScope = z.enum(['repo', 'global', 'team']);
 export type MemoryScope = z.infer<typeof MemoryScope>;
@@ -130,6 +148,18 @@ export const Skill = z.object({
   evidence_files: z.array(z.string()).nullish(),
 });
 export type Skill = z.infer<typeof Skill>;
+
+// The immutable body snapshot captured in `skill_versions` whenever a skill's
+// config changes (anything but `enabled`) — mirrors the shape written by the
+// skills repository. Used for version history / diff in the Skill editor.
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  change_summary: z.string().nullable(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
 
 export const CommunitySkill = z.object({
   name: z.string(),
