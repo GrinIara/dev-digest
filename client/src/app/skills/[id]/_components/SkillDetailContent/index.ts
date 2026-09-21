@@ -1,1 +1,1 @@
-export { SkillDetail, SkillDetail as default } from "./SkillDetail";
+export { SkillDetailContent } from "./SkillDetailContent";

@@ -2,13 +2,13 @@ import type { CSSProperties } from "react";
 
 /** Co-located styles for SkillCard (mirrors AgentCard/styles.ts). */
 export const s = {
-  card: (enabled: boolean): CSSProperties => ({
+  card: (active: boolean, enabled: boolean): CSSProperties => ({
     position: "relative",
     padding: 14,
     borderRadius: 8,
     cursor: "pointer",
-    border: "1px solid var(--border)",
-    background: "var(--bg-elevated)",
+    border: "1px solid " + (active ? "var(--border-strong)" : "var(--border)"),
+    background: active ? "var(--bg-hover)" : "var(--bg-elevated)",
     opacity: enabled ? 1 : 0.6,
     marginBottom: 10,
   }),
@@ -21,8 +21,8 @@ export const s = {
     color: "inherit",
     textDecoration: "none",
   } satisfies CSSProperties,
-  /** Lifts an interactive control (toggle) above cardLink so it stays
-   *  independently clickable instead of triggering navigation. */
+  /** Lifts an interactive control (toggle, delete button) above cardLink so
+   *  it stays independently clickable instead of triggering navigation. */
   aboveLink: { position: "relative", zIndex: 1 } satisfies CSSProperties,
   headerRow: { display: "flex", alignItems: "center", gap: 10 } satisfies CSSProperties,
   iconBox: {

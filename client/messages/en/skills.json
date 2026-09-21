@@ -23,7 +23,13 @@
     }
   },
   "card": {
-    "noDescription": "No description"
+    "noDescription": "No description",
+    "delete": "Delete skill",
+    "deleteConfirm": {
+      "title": "Delete skill",
+      "body": "“{name}” and its version history will be permanently deleted. This can't be recovered.",
+      "confirm": "Delete"
+    }
   },
   "detail": {
     "crumbSkill": "Skill",

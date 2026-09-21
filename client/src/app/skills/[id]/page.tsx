@@ -1,7 +1,18 @@
-import { SkillDetail } from "./_components/SkillDetail";
+"use client";
 
-/* Route: /skills/:id (Skill detail). Thin route entry — the header, 5-tab
-   editor, styles, constants and i18n are colocated under _components. */
+import { useParams } from "next/navigation";
+import { SkillsShell } from "../_components/SkillsShell";
+import { SkillDetailContent } from "./_components/SkillDetailContent";
+
+/* Route: /skills/:id (Skill detail). The skill list stays visible via
+   SkillsShell's SkillsSidebar; this route only supplies the right-hand
+   detail pane (header + tabbed editor), scoped to its own fetch/error
+   state so a failed detail fetch never takes down the list. */
 export default function SkillDetailPage() {
-  return <SkillDetail />;
+  const { id } = useParams<{ id: string }>();
+  return (
+    <SkillsShell activeId={id}>
+      <SkillDetailContent id={id} />
+    </SkillsShell>
+  );
 }
