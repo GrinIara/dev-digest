@@ -7,6 +7,7 @@
     "searchPlaceholder": "Search skills…",
     "loadError": "Could not load skills.",
     "menu": {
+      "create": "Create from scratch",
       "fromFile": "Import from file",
       "fromUrl": "Import from URL",
       "community": "Search community skills…"
@@ -21,14 +22,75 @@
       "body": "Pick a skill on the left to preview its body."
     }
   },
+  "card": {
+    "noDescription": "No description"
+  },
   "detail": {
     "crumbSkill": "Skill",
     "back": "← All skills",
     "loadError": "Could not load this skill.",
+    "runOnEvals": "Run on evals",
     "notFound": {
       "title": "Skill not found",
       "body": "It may have been deleted."
+    },
+    "tabs": {
+      "config": "Config",
+      "preview": "Preview",
+      "versions": "Versions",
+      "stats": "Stats",
+      "evals": "Evals"
     }
+  },
+  "create": {
+    "title": "Create skill",
+    "subtitle": "A skill is a reusable rule injected into an agent's prompt.",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "creating": "Creating…",
+    "fields": {
+      "name": "Name",
+      "namePlaceholder": "pr-quality-rubric",
+      "description": "Description",
+      "descriptionPlaceholder": "What this skill checks for",
+      "type": "Type",
+      "body": "Skill body (Markdown)",
+      "bodyPlaceholder": "# Rule\nDescribe the rule…"
+    }
+  },
+  "config": {
+    "title": "Configuration",
+    "enabled": "Enabled",
+    "name": "Name",
+    "nameHint": "Conventionally kebab-case, e.g. pr-quality-rubric.",
+    "description": "Description",
+    "type": "Type",
+    "body": "Skill body (Markdown)",
+    "tokenCount": "{tokens} tokens",
+    "changeSummary": "Describe your change (optional)",
+    "changeSummaryPlaceholder": "What changed and why",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved (v{version})",
+    "savedToast": "Skill saved (v{version})"
+  },
+  "versions": {
+    "heading": "Version history",
+    "empty": "No previous versions yet.",
+    "noSummary": "No summary",
+    "current": "Current",
+    "diff": "Diff",
+    "restore": "Restore",
+    "restoredSummary": "Restored from v{version}",
+    "diffModalTitle": "Diff — v{from} → v{to}"
+  },
+  "stats": {
+    "usedByHeading": "Used by",
+    "usedByEmpty": "Not linked to any agent yet.",
+    "notEnoughData": "Not enough run data yet.",
+    "pullFrequency": "Pull frequency",
+    "acceptRate": "Accept rate",
+    "findingsByCategory": "Findings by category"
   },
   "drawer": {
     "title": "Add a skill",
@@ -38,6 +100,7 @@
       "url": "From URL",
       "community": "Community"
     },
+    "trustWarning": "Importing this skill makes its body another party's instructions inside every agent's prompt that enables it — review it before enabling.",
     "importFailed": "Import failed"
   },
   "file": {
@@ -47,9 +110,14 @@
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Pasted content is wrapped as untrusted data — never executed as instructions.",
     "bodyPlaceholder": "# Rule\nDescribe the rule…",
+    "orUpload": "Or upload a .md / .zip file",
+    "chooseFile": "Choose file",
     "importing": "Importing…",
     "import": "Import skill",
-    "success": "Imported \"{name}\" (stored as untrusted data)."
+    "confirm": "Add skill",
+    "confirming": "Adding…",
+    "success": "Imported \"{name}\" (stored as untrusted data).",
+    "typeLabel": "Type"
   },
   "url": {
     "label": "Skill URL",
@@ -74,6 +142,7 @@
   "listItem": {
     "needsVetting": "needs vetting",
     "vettingTitle": "Untrusted source — vet before enabling",
+    "usedBy": "{count, plural, one {# agent} other {# agents}}",
     "type": {
       "rubric": "rubric",
       "convention": "convention",
