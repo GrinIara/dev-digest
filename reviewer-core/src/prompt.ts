@@ -51,12 +51,14 @@ export interface PromptParts {
   /** Agent's system prompt (trusted). */
   system: string;
   /**
-   * Linked skill bodies. Delimiter-wrapped like `specs`/`repoMap`/`callers`/
-   * `diff` — community skill bodies are not guaranteed sanitized upstream, so
-   * they get the same untrusted-data treatment rather than a bypass of
-   * `wrapUntrusted`.
+   * Linked skills (id + body). Delimiter-wrapped like `specs`/`repoMap`/
+   * `callers`/`diff` — community skill bodies are not guaranteed sanitized
+   * upstream, so they get the same untrusted-data treatment rather than a
+   * bypass of `wrapUntrusted`. The id labels each block (`skill:<id>`) so
+   * per-skill attribution can be derived from the persisted trace without a
+   * new DB column (Skills Lab stats).
    */
-  skills?: string[];
+  skills?: { id: string; body: string }[];
   /** Relevant memory items (trusted, curated). */
   memory?: string[];
   /** Project-context spec chunks (untrusted content). */
@@ -103,7 +105,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
 
   const skillsBlock =
     parts.skills && parts.skills.length > 0
-      ? parts.skills.map((s, i) => wrapUntrusted(`skill-${i}`, s)).join('\n\n')
+      ? parts.skills.map((s) => wrapUntrusted(`skill:${s.id}`, s.body)).join('\n\n')
       : undefined;
   const memoryBlock =
     parts.memory && parts.memory.length > 0

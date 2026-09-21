@@ -183,4 +183,16 @@ export class AgentsService {
       return [];
     }
   }
+
+  /**
+   * Cross-provider model list for the single Model picker in the Agent editor
+   * (no separate Provider dropdown). Merges all three adapters' `listModels()`,
+   * tolerating each provider's failure independently — same degrade-to-[]
+   * contract as `listModels`, just fanned out.
+   */
+  async listAllModels(): Promise<ModelInfo[]> {
+    const providers: Provider[] = ['openai', 'anthropic', 'openrouter'];
+    const lists = await Promise.all(providers.map((p) => this.listModels(p)));
+    return lists.flat();
+  }
 }

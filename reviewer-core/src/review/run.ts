@@ -52,8 +52,9 @@ export interface ReviewInput {
   llm: LLMProvider;
   /** 'auto' (default) picks single-pass unless the diff is large + multi-file. */
   strategy?: ReviewStrategy;
-  /** Resolved skill bodies (NOT slugs). */
-  skills?: string[];
+  /** Resolved skills (id + body, NOT slugs) — id is used to label the skill's
+   *  block in the prompt trace (`skill:<id>`) for per-skill attribution. */
+  skills?: { id: string; body: string }[];
   /** Curated memory items. */
   memory?: string[];
   /** Project-context spec chunks (untrusted; delimiter-wrapped downstream). */

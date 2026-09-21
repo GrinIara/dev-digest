@@ -28,6 +28,7 @@ const VersionParams = z.object({
  *   POST   /agents/:id/skills       → set/reorder linked skills OR link one
  *   GET    /agents/:id/models       → dynamic model list for the agent's provider
  *   GET    /providers/:id/models    → dynamic model list for a provider (editor)
+ *   GET    /models                  → dynamic model list merged across all providers
  */
 
 const CreateAgentBody = z.object({
@@ -174,5 +175,10 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
   app.get('/providers/:id/models', { schema: { params: ProviderParams } }, async (req) => {
     await getContext(app.container, req);
     return service.listModels(req.params.id);
+  });
+
+  app.get('/models', async (req) => {
+    await getContext(app.container, req);
+    return service.listAllModels();
   });
 }
