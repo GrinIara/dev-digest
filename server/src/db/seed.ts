@@ -350,6 +350,29 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     await ensureLinked(generalReviewer.id, apiBreakingChangeDetection.id, existingGeneralLinks.length);
   }
 
+  const apiSemverDiscipline = await ensureSkill({
+    name: 'api-semver-discipline',
+    description: 'Flags a change to an exported/public API surface that requires a semver major bump but ships without one.',
+    type: 'convention',
+    source: 'manual',
+    body: '# API semver discipline\n\nFlag a diff that changes a public API surface in a way that requires a\nsemver major bump, but ships with no version bump anywhere in the diff (no\n`package.json` version change, no CHANGELOG entry, no API version header):\n- A removed or renamed exported function, class, type, or route.\n- A breaking change to a function/route signature (removed/reordered params,\n  a narrowed accepted type).\n- A response or request contract change of the kind `api-breaking-change-detection`\n  flags (field removed/renamed, type/nullability changed, optional-to-required).\n- A changed default value or default behavior that alters existing callers\'\n  outcomes without any input change on their part.\n\nThis is a correctness/process issue: shipping a breaking change under a\nminor/patch version misleads every consumer relying on semver to gate\nupgrades. CRITICAL when the surface change is a clear hard break with no\nversion bump at all; WARNING when a bump exists but its magnitude does not\nmatch the change (e.g. only a patch bump for a breaking change).',
+  });
+  const apiDeprecationPolicy = await ensureSkill({
+    name: 'api-deprecation-policy',
+    description: 'Flags silent removal of a public API/route/field/export instead of a proper deprecation cycle.',
+    type: 'convention',
+    source: 'manual',
+    body: '# API deprecation policy\n\nFlag a diff that removes a public API, route, field, or export outright\ninstead of going through a deprecation cycle:\n- No `@deprecated` marker/comment (or equivalent doc-comment) was ever added\n  for the removed surface in this diff or a prior one visible in context.\n- No deprecation-period note (a version at which it was marked deprecated,\n  and a version at which it is actually removed).\n- No migration guidance in the PR description or code comments pointing\n  callers at a replacement.\n- No coexistence window — the old and new surface are not both usable for at\n  least one release before the old one disappears.\n\nA silent removal gives existing callers no warning and no path forward,\nunlike a `api-breaking-change-detection` finding which is about the shape of\nthe break itself. CRITICAL for a hard removal with zero deprecation trail;\nWARNING when a deprecation notice exists but lacks a migration path or a\nclear removal timeline.',
+  });
+  if (generalReviewer) {
+    const existingGeneralLinks = await db
+      .select()
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, generalReviewer.id));
+    await ensureLinked(generalReviewer.id, apiSemverDiscipline.id, existingGeneralLinks.length);
+    await ensureLinked(generalReviewer.id, apiDeprecationPolicy.id, existingGeneralLinks.length + 1);
+  }
+
   // ---- eval_cases for the two control experiments (A.10) ----
   async function ensureEvalCase(input: {
     ownerKind: 'skill' | 'agent';
@@ -431,6 +454,72 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         '   if (!user) return reply.code(404).send();',
         '-  return reply.send({ id: user.id, email: user.email, name: user.name });',
         '+  return reply.send({ id: user.id, email: user.email });',
+        ' }',
+        '',
+      ].join('\n'),
+      expectedOutput: { min_findings: 1 },
+    });
+
+    await ensureEvalCase({
+      ownerKind: 'agent',
+      ownerId: generalReviewer.id,
+      name: 'Renamed export with no version bump',
+      notes:
+        'Control experiment: without api-semver-discipline bound, expect skip/no finding on the ' +
+        'renamed export. With it bound, expect a semver-discipline finding.',
+      inputDiff: [
+        'diff --git a/src/lib/pricing.ts b/src/lib/pricing.ts',
+        '--- a/src/lib/pricing.ts',
+        '+++ b/src/lib/pricing.ts',
+        '@@ -10,7 +10,7 @@',
+        '-export function calculateTotal(items: Item[]): number {',
+        '+export function computeTotal(items: Item[]): number {',
+        '   return items.reduce((sum, i) => sum + i.price * i.qty, 0);',
+        ' }',
+        'diff --git a/package.json b/package.json',
+        '--- a/package.json',
+        '+++ b/package.json',
+        '@@ -2,7 +2,7 @@',
+        '   "name": "acme-payments-api",',
+        '-  "version": "2.4.1",',
+        '+  "version": "2.4.2",',
+        '',
+      ].join('\n'),
+      expectedOutput: { min_findings: 1 },
+    });
+
+    await ensureEvalCase({
+      ownerKind: 'agent',
+      ownerId: generalReviewer.id,
+      name: 'Public route removed with no deprecation trail',
+      notes:
+        'Control experiment: without api-deprecation-policy bound, expect skip/no finding on the ' +
+        'removed route. With it bound, expect a deprecation-policy finding.',
+      inputDiff: [
+        'diff --git a/src/api/legacy-webhooks.ts b/src/api/legacy-webhooks.ts',
+        'deleted file mode 100644',
+        '--- a/src/api/legacy-webhooks.ts',
+        '+++ /dev/null',
+        '@@ -1,9 +0,0 @@',
+        "-import type { FastifyInstance } from 'fastify';",
+        '-',
+        '-export function registerLegacyWebhooks(app: FastifyInstance) {',
+        "-  app.post('/v1/webhooks/legacy', async (req, reply) => {",
+        '-    // handles pre-v2 webhook payloads',
+        '-    return reply.code(200).send({ ok: true });',
+        '-  });',
+        '-}',
+        '-',
+        'diff --git a/src/api/index.ts b/src/api/index.ts',
+        '--- a/src/api/index.ts',
+        '+++ b/src/api/index.ts',
+        '@@ -3,7 +3,6 @@',
+        "-import { registerLegacyWebhooks } from './legacy-webhooks';",
+        " import { registerWebhooks } from './webhooks';",
+        ' ',
+        ' export function registerRoutes(app: FastifyInstance) {',
+        '-  registerLegacyWebhooks(app);',
+        '   registerWebhooks(app);',
         ' }',
         '',
       ].join('\n'),
