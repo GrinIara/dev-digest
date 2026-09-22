@@ -126,6 +126,23 @@ export function useSetAgentSkills() {
   });
 }
 
+export interface LinkAgentSkillInput {
+  agentId: string;
+  skillId: string;
+}
+
+/** Append one skill to an agent's linked set, without touching the rest
+ *  (server's `skill_id` branch, additive — as opposed to `useSetAgentSkills`'s
+ *  full-set replace). Used by the Conventions Extractor's create-skill flow. */
+export function useLinkAgentSkill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, skillId }: LinkAgentSkillInput) =>
+      api.post<AgentSkillLink[]>(`/agents/${agentId}/skills`, { skill_id: skillId }),
+    onSuccess: (data, { agentId }) => qc.setQueryData(["agent-skills", agentId], data),
+  });
+}
+
 /** agent id -> number of skills currently bound to it. Fires one
  *  `GET /agents/:id/skills` per visible agent (fine for a small workspace —
  *  mirrors `useSkillUsageCounts`'s N+1 shape in `hooks/skills.ts`, reimplemented

@@ -8,6 +8,7 @@ import agents from './agents/routes.js';
 import reviews from './reviews/routes.js';
 import repoIntel from './repo-intel/routes.js';
 import skills from './skills/routes.js';
+import conventions from './conventions/routes.js';
 import evalModule from './eval/routes.js';
 
 /**
@@ -33,5 +34,6 @@ export const modules: Record<string, FastifyPluginAsync> = {
   reviews,
   repoIntel,
   skills,
+  conventions,
   eval: evalModule,
 };
