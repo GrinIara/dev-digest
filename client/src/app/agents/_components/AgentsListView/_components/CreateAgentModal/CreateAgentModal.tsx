@@ -3,13 +3,18 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Button, Modal, FormField, TextInput, SelectInput, Textarea } from "@devdigest/ui";
-import type { Provider } from "@devdigest/shared";
-import { useCreateAgent } from "../../../../../../lib/hooks/agents";
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODAL_WIDTH, PROVIDER_OPTIONS } from "./constants";
+import { Button, Modal, FormField, TextInput, SearchableSelect, Textarea } from "@devdigest/ui";
+import type { ModelInfo, Provider } from "@devdigest/shared";
+import { useCreateAgent, useAllModels } from "../../../../../../lib/hooks/agents";
+import { modelLabel } from "../../../../../../lib/model-label";
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODAL_WIDTH } from "./constants";
 import { s } from "./styles";
 
-/** Create-agent modal — name/description/provider/model/system-prompt. */
+/** Composite SearchableSelect value — mirrors ConfigTab's cross-provider
+   picker: model ids alone aren't unique once the list spans every provider. */
+const modelKey = (provider: string, id: string) => `${provider}::${id}`;
+
+/** Create-agent modal — name/description/cross-provider model/system-prompt. */
 export function CreateAgentModal({ onClose }: { onClose: () => void }) {
   const t = useTranslations("agents");
   const router = useRouter();
@@ -19,6 +24,24 @@ export function CreateAgentModal({ onClose }: { onClose: () => void }) {
   const [provider, setProvider] = React.useState<Provider>(DEFAULT_PROVIDER);
   const [model, setModel] = React.useState(DEFAULT_MODEL);
   const [systemPrompt, setSystemPrompt] = React.useState(t("create.defaultSystemPrompt"));
+
+  const { data: allModels } = useAllModels();
+  const selectedKey = modelKey(provider, model);
+  const modelOptions = (allModels ?? []).map((m) => ({
+    value: modelKey(m.provider, m.id),
+    label: modelLabel(m),
+  }));
+  const hasModel = modelOptions.some((o) => o.value === selectedKey);
+  if (!hasModel) modelOptions.unshift({ value: selectedKey, label: modelLabel({ id: model, provider }) });
+  const noModels = allModels !== undefined && allModels.length === 0;
+
+  const onModelChange = (key: string) => {
+    const found = (allModels ?? []).find((m: ModelInfo) => modelKey(m.provider, m.id) === key);
+    if (found) {
+      setProvider(found.provider);
+      setModel(found.id);
+    }
+  };
 
   const submit = async () => {
     const agent = await create.mutateAsync({
@@ -60,15 +83,16 @@ export function CreateAgentModal({ onClose }: { onClose: () => void }) {
             placeholder={t("create.fields.descriptionPlaceholder")}
           />
         </FormField>
-        <FormField label={t("create.fields.provider")}>
-          <SelectInput
-            value={provider}
-            onChange={(v) => setProvider(v as Provider)}
-            options={[...PROVIDER_OPTIONS]}
+        <FormField
+          label={t("create.fields.model")}
+          hint={noModels ? t("config.modelEmptyHint", { provider }) : undefined}
+        >
+          <SearchableSelect
+            value={selectedKey}
+            onChange={onModelChange}
+            options={modelOptions}
+            placeholder={t("config.modelSearch")}
           />
-        </FormField>
-        <FormField label={t("create.fields.model")}>
-          <TextInput value={model} onChange={setModel} mono />
         </FormField>
         <FormField label={t("create.fields.systemPrompt")}>
           <Textarea value={systemPrompt} onChange={setSystemPrompt} rows={6} mono />

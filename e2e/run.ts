@@ -6,7 +6,13 @@
  * agent-browser commands. Commands share one browser session (the daemon keeps
  * the page between invocations). A command that exits non-zero — including a
  * `wait --text` / `wait --url` whose condition never holds — fails the step and
- * the flow. We add only light substring checks on top.
+ * the flow. A flow step may also be `{ "use": "<fixture>" }`, which splices in
+ * the steps from `specs/fixtures/<fixture>.json` — used to share a common step
+ * sequence (e.g. "navigate to PR #482's detail route") across specs instead of
+ * duplicating it verbatim.
+ *
+ * Malformed flow/fixture JSON fails just that one flow (logged clearly) — it
+ * never aborts the whole run before the summary prints.
  *
  * Env:
  *   E2E_BASE_URL       web app origin (default http://localhost:3000)
@@ -22,11 +28,15 @@ import { readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
+  isUseStep,
   resolveArgs,
-  stdoutContains,
   summarize,
-  type Flow,
+  validateFixture,
+  validateFlow,
+  type FlowStep,
   type FlowResult,
+  type ResolvedFlow,
+  type Step,
   type StepResult,
 } from "./lib/assert.js";
 
@@ -34,6 +44,7 @@ const exec = promisify(execFile);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SPECS_DIR = join(HERE, "specs");
+const FIXTURES_DIR = join(SPECS_DIR, "fixtures");
 const RESULTS_DIR = join(HERE, "test-results");
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
@@ -50,31 +61,99 @@ async function ab(args: string[]): Promise<string> {
   return stdout ?? "";
 }
 
-function loadFlows(): { file: string; flow: Flow }[] {
-  return readdirSync(SPECS_DIR)
-    .filter((f) => f.endsWith(".flow.json"))
-    .sort()
-    .map((file) => ({
-      file,
-      flow: JSON.parse(readFileSync(join(SPECS_DIR, file), "utf8")) as Flow,
-    }));
+/** Load and validate every `specs/fixtures/*.json` file into a name → steps map. */
+function loadFixtures(): Map<string, Step[]> {
+  const fixtures = new Map<string, Step[]>();
+  let files: string[];
+  try {
+    files = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".json"));
+  } catch {
+    return fixtures; // no fixtures directory yet — fine, `use` refs just won't resolve
+  }
+  for (const file of files) {
+    const name = file.replace(/\.json$/, "");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(join(FIXTURES_DIR, file), "utf8"));
+    } catch (e) {
+      console.error(`invalid fixture file fixtures/${file}: ${(e as Error).message}`);
+      continue;
+    }
+    const result = validateFixture(parsed, `fixtures/${file}`);
+    if (typeof result === "string") {
+      console.error(result);
+      continue;
+    }
+    fixtures.set(name, result);
+  }
+  return fixtures;
 }
 
-async function runFlow(file: string, flow: Flow): Promise<FlowResult> {
+/** Expand any `{ use }` entries against the loaded fixtures. Returns an error string on an unknown fixture name. */
+function expandSteps(steps: FlowStep[], fixtures: Map<string, Step[]>, file: string): Step[] | string {
+  const out: Step[] = [];
+  for (const step of steps) {
+    if (isUseStep(step)) {
+      const fixture = fixtures.get(step.use);
+      if (!fixture) {
+        return `invalid flow file ${file}: unknown fixture "${step.use}" (expected specs/fixtures/${step.use}.json)`;
+      }
+      out.push(...fixture);
+    } else {
+      out.push(step);
+    }
+  }
+  return out;
+}
+
+/**
+ * Load every `specs/*.flow.json`, validating shape and expanding `use` refs.
+ * A malformed flow file (or one that references an unknown fixture) is logged
+ * and skipped — it does not abort loading the rest, or the run.
+ */
+function loadFlows(): { file: string; flow: ResolvedFlow }[] {
+  const fixtures = loadFixtures();
+  const files = readdirSync(SPECS_DIR)
+    .filter((f) => f.endsWith(".flow.json"))
+    .sort();
+
+  const flows: { file: string; flow: ResolvedFlow }[] = [];
+  for (const file of files) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(join(SPECS_DIR, file), "utf8"));
+    } catch (e) {
+      console.error(`invalid flow file ${file}: ${(e as Error).message}`);
+      continue;
+    }
+
+    const validated = validateFlow(parsed, file);
+    if (typeof validated === "string") {
+      console.error(validated);
+      continue;
+    }
+
+    const steps = expandSteps(validated.steps, fixtures, file);
+    if (typeof steps === "string") {
+      console.error(steps);
+      continue;
+    }
+
+    flows.push({ file, flow: { name: validated.name, description: validated.description, steps } });
+  }
+  return flows;
+}
+
+async function runFlow(file: string, flow: ResolvedFlow): Promise<FlowResult> {
   const id = file.replace(/\.flow\.json$/, "");
   console.log(`\n▶ ${flow.name}  (${file})`);
   const steps: StepResult[] = [];
 
   for (const step of flow.steps) {
-    const args = resolveArgs(step.cmd, BASE);
-    const label = step.label ?? args.join(" ");
+    const label = step.label ?? step.cmd.join(" ");
     try {
-      const stdout = await ab(args);
-      if (step.assert?.stdoutIncludes && !stdoutContains(stdout, step.assert.stdoutIncludes)) {
-        steps.push({ label, ok: false, detail: `stdout missing "${step.assert.stdoutIncludes}"` });
-        console.log(`   ✗ ${label} — assertion failed`);
-        break;
-      }
+      const args = resolveArgs(step.cmd, BASE);
+      await ab(args);
       steps.push({ label, ok: true });
       console.log(`   ✓ ${label}`);
     } catch (e) {
@@ -96,7 +175,7 @@ async function main(): Promise<void> {
   console.log(`DevDigest e2e — base=${BASE} bin=${BIN}`);
   const flows = loadFlows();
   if (flows.length === 0) {
-    console.error(`No specs found in ${SPECS_DIR}`);
+    console.error(`No valid specs found in ${SPECS_DIR}`);
     process.exit(1);
   }
 

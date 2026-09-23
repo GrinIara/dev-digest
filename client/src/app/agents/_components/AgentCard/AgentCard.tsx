@@ -3,9 +3,11 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Toggle } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
+import { ConfirmModal } from "@/components/confirm-modal/ConfirmModal";
 import { useDeleteAgent } from "../../../../lib/hooks/agents";
 import { modelColor } from "./helpers";
 import { s } from "./styles";
@@ -14,39 +16,53 @@ export function AgentCard({
   ag,
   active,
   skillCount,
-  onClick,
+  href,
   onToggle,
 }: {
   ag: Agent;
   active?: boolean;
   skillCount?: number;
-  onClick?: () => void;
+  /** Selecting the card navigates here. Rendered as a real `next/link` overlay
+   *  (finding #8) so the card is keyboard-reachable and ctrl/cmd-clickable —
+   *  the toggle and delete button sit above it (higher z-index) so they stay
+   *  independently clickable without nesting inside the anchor. */
+  href?: string;
   onToggle?: (enabled: boolean) => void;
 }) {
   const t = useTranslations("agents");
   const del = useDeleteAgent();
   const color = modelColor(ag.model);
+  const [deleting, setDeleting] = React.useState(false);
   return (
-    <div onClick={onClick} style={s.card(!!active, ag.enabled)}>
+    <div style={s.card(!!active, ag.enabled)}>
+      {href && <Link href={href} aria-label={ag.name} style={s.cardLink} />}
+      {deleting && (
+        <ConfirmModal
+          title="Delete agent"
+          body={`Delete agent "${ag.name}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          pending={del.isPending}
+          onConfirm={() => del.mutate(ag.id, { onSuccess: () => setDeleting(false) })}
+          onCancel={() => setDeleting(false)}
+        />
+      )}
       <div style={s.headerRow}>
         <div style={s.iconBox}>
           <Icon.Cpu size={15} />
         </div>
         <span style={s.name}>{ag.name}</span>
         {onToggle && (
-          <div onClick={(e) => e.stopPropagation()}>
+          <div style={s.aboveLink}>
             <Toggle on={ag.enabled} onChange={onToggle} size={14} />
           </div>
         )}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (window.confirm(`Delete agent "${ag.name}"? This cannot be undone.`)) del.mutate(ag.id);
-          }}
+          onClick={() => setDeleting(true)}
           disabled={del.isPending}
           title="Delete agent"
           aria-label="Delete agent"
           style={{
+            ...s.aboveLink,
             background: "none",
             border: "none",
             cursor: del.isPending ? "not-allowed" : "pointer",

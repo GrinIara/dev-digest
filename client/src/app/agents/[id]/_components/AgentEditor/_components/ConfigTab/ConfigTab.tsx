@@ -2,15 +2,23 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { FormField, TextInput, SelectInput, SearchableSelect, Textarea, Toggle, Button } from "@devdigest/ui";
-import type { Agent, CiFailOn, Provider, ReviewStrategy } from "@devdigest/shared";
-import { useUpdateAgent, useProviderModels } from "../../../../../../../lib/hooks/agents";
+import { FormField, TextInput, SelectInput, SearchableSelect, Textarea, Toggle, Button, Icon } from "@devdigest/ui";
+import type { Agent, CiFailOn, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import { useUpdateAgent, useAllModels } from "../../../../../../../lib/hooks/agents";
 import { useToast } from "../../../../../../../lib/toast";
-import { toModelOptions } from "../../../../../../../lib/model-label";
-import { CI_FAIL_ON_VALUES, OUTPUT_SCHEMA_VALUE, PROVIDER_OPTIONS, STRATEGY_VALUES } from "./constants";
+import { modelLabel } from "../../../../../../../lib/model-label";
+import { CI_FAIL_ON_VALUES, OUTPUT_SCHEMA_VALUE, STRATEGY_VALUES } from "./constants";
 import { s } from "./styles";
 
-/** Config tab — name/description/provider/model/system-prompt + enabled toggle. */
+/** Composite SearchableSelect value — model ids alone aren't unique once the
+   list spans every provider, so the picker's internal `value` is provider+id
+   and gets split back into the two real fields on selection/save. */
+const modelKey = (provider: string, id: string) => `${provider}::${id}`;
+
+/** Config tab — name/description/cross-provider model/system-prompt + enabled
+   toggle. `repo_intel` and `ci_fail_on` live in the Advanced disclosure here
+   (folded back in from the now-deleted Context/CI tabs — the checklist wants
+   exactly 2 editor tabs, Config and Skills). */
 export function ConfigTab({ agent }: { agent: Agent }) {
   const t = useTranslations("agents");
   const toast = useToast();
@@ -21,34 +29,34 @@ export function ConfigTab({ agent }: { agent: Agent }) {
   const [model, setModel] = React.useState(agent.model);
   const [systemPrompt, setSystemPrompt] = React.useState(agent.system_prompt);
   const [strategy, setStrategy] = React.useState<ReviewStrategy>(agent.strategy);
-  const [ciFailOn, setCiFailOn] = React.useState<CiFailOn>(agent.ci_fail_on);
   const [repoIntel, setRepoIntel] = React.useState(agent.repo_intel);
+  const [ciFailOn, setCiFailOn] = React.useState<CiFailOn>(agent.ci_fail_on);
   const [enabled, setEnabled] = React.useState(agent.enabled);
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
-  // Reset local form when switching agents.
-  React.useEffect(() => {
-    setName(agent.name);
-    setDescription(agent.description);
-    setProvider(agent.provider);
-    setModel(agent.model);
-    setSystemPrompt(agent.system_prompt);
-    setStrategy(agent.strategy);
-    setCiFailOn(agent.ci_fail_on);
-    setRepoIntel(agent.repo_intel);
-    setEnabled(agent.enabled);
-  }, [agent.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { data: allModels } = useAllModels();
+  const selectedKey = modelKey(provider, model);
+  // Every option is provider-prefixed (modelLabel) so cross-provider id
+  // collisions stay disambiguated; the composite key is UI-internal only.
+  const modelOptions = (allModels ?? []).map((m) => ({
+    value: modelKey(m.provider, m.id),
+    label: modelLabel(m),
+  }));
+  const hasModel = modelOptions.some((o) => o.value === selectedKey);
+  if (!hasModel) modelOptions.unshift({ value: selectedKey, label: modelLabel({ id: model, provider }) });
+  // Empty list after load = every provider key missing/invalid (listModels
+  // degraded each to []) — guide the user instead of showing an empty dropdown.
+  const noModels = allModels !== undefined && allModels.length === 0;
 
-  const { data: models } = useProviderModels(provider);
-  // Show the price (USD per 1M in/out tokens) in the label when the provider
-  // exposes it (OpenRouter) so a cheap model is easy to pick; value stays the id.
-  const modelOptions = toModelOptions(models);
-  const hasModel = modelOptions.some((o) => (typeof o === "string" ? o : o.value) === model);
-  if (!hasModel) modelOptions.unshift(model);
-  // Empty list after load = provider key missing/invalid (listModels failed) —
-  // guide the user instead of showing a silent one-item dropdown.
-  const noModels = models !== undefined && models.length === 0;
+  const onModelChange = (key: string) => {
+    const found = (allModels ?? []).find((m: ModelInfo) => modelKey(m.provider, m.id) === key);
+    if (found) {
+      setProvider(found.provider);
+      setModel(found.id);
+    }
+  };
 
-  // Friendly labels for the strategy select (values come from constants).
+  // Friendly labels for the strategy/CI-gate selects (values come from constants).
   const strategyOptions = STRATEGY_VALUES.map((v) => ({ value: v, label: t(`config.strategyOptions.${v}`) }));
   const ciFailOnOptions = CI_FAIL_ON_VALUES.map((v) => ({ value: v, label: t(`config.ciFailOnOptions.${v}`) }));
 
@@ -63,8 +71,8 @@ export function ConfigTab({ agent }: { agent: Agent }) {
           model,
           system_prompt: systemPrompt,
           strategy,
-          ci_fail_on: ciFailOn,
           repo_intel: repoIntel,
+          ci_fail_on: ciFailOn,
           enabled,
         },
       },
@@ -90,42 +98,16 @@ export function ConfigTab({ agent }: { agent: Agent }) {
       <FormField label={t("config.description")}>
         <TextInput value={description} onChange={setDescription} />
       </FormField>
-      <FormField label={t("config.provider")}>
-        <SelectInput
-          value={provider}
-          onChange={(v) => setProvider(v as Provider)}
-          options={[...PROVIDER_OPTIONS]}
-        />
-      </FormField>
       <FormField
         label={t("config.model")}
         hint={noModels ? t("config.modelEmptyHint", { provider }) : t("config.modelHint")}
       >
         <SearchableSelect
-          value={model}
-          onChange={setModel}
+          value={selectedKey}
+          onChange={onModelChange}
           options={modelOptions}
           placeholder={t("config.modelSearch")}
         />
-      </FormField>
-      <FormField label={t("config.strategy")} hint={t("config.strategyHint")}>
-        <SelectInput
-          value={strategy}
-          onChange={(v) => setStrategy(v as ReviewStrategy)}
-          options={strategyOptions}
-        />
-      </FormField>
-      <FormField label={t("config.ciFailOn")} hint={t("config.ciFailOnHint")}>
-        <SelectInput
-          value={ciFailOn}
-          onChange={(v) => setCiFailOn(v as CiFailOn)}
-          options={ciFailOnOptions}
-        />
-      </FormField>
-      <FormField label={t("config.repoIntel")} hint={t("config.repoIntelHint")}>
-        <label style={s.enabledLabel}>
-          <Toggle on={repoIntel} onChange={setRepoIntel} size={16} />
-        </label>
       </FormField>
       <FormField label={t("config.systemPrompt")} hint={t("config.systemPromptHint")}>
         <Textarea value={systemPrompt} onChange={setSystemPrompt} rows={8} mono />
@@ -133,6 +115,33 @@ export function ConfigTab({ agent }: { agent: Agent }) {
       <FormField label={t("config.outputSchema")}>
         <SelectInput value={OUTPUT_SCHEMA_VALUE} options={[OUTPUT_SCHEMA_VALUE]} />
       </FormField>
+
+      <button type="button" style={s.advancedToggle} onClick={() => setAdvancedOpen((v) => !v)}>
+        <Icon.ChevronRight size={14} style={advancedOpen ? s.advancedChevronOpen : undefined} />
+        {t("config.advanced")}
+      </button>
+      {advancedOpen && (
+        <div style={s.advancedBody}>
+          <FormField label={t("config.strategy")} hint={t("config.strategyHint")}>
+            <SelectInput
+              value={strategy}
+              onChange={(v) => setStrategy(v as ReviewStrategy)}
+              options={strategyOptions}
+            />
+          </FormField>
+          <FormField label={t("config.repoIntel")} hint={t("config.repoIntelHint")}>
+            <Toggle on={repoIntel} onChange={setRepoIntel} size={16} />
+          </FormField>
+          <FormField label={t("config.ciFailOn")} hint={t("config.ciFailOnHint")}>
+            <SelectInput
+              value={ciFailOn}
+              onChange={(v) => setCiFailOn(v as CiFailOn)}
+              options={ciFailOnOptions}
+            />
+          </FormField>
+        </div>
+      )}
+
       <div style={s.actions}>
         <Button kind="primary" icon="Check" onClick={save} disabled={update.isPending}>
           {update.isPending ? t("config.saving") : t("config.save")}

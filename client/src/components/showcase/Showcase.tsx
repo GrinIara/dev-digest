@@ -1,6 +1,7 @@
 /* Showcase.tsx — renders every design-system component for visual verification.
-   Used by the /showcase route (both themes) and by the smoke tests.
-   Dev-only page: labels are intentionally not internationalized. */
+   No live route mounts this; it's exercised only by src/test/smoke.test.tsx,
+   which renders <Gallery /> directly to catch design-system regressions.
+   Dev-only: labels are intentionally not internationalized. */
 "use client";
 
 import React from "react";

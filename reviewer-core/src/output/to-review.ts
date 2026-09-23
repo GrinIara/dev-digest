@@ -13,6 +13,37 @@ import { buildLineIndex } from '../grounding.js';
  * NOT from the model's self-reported `verdict` (which drifts and surprises).
  */
 
+/**
+ * Sanitize LLM-authored finding text (`title`/`rationale`/`suggestion`)
+ * before it's interpolated into a GitHub review body / inline comment. This
+ * text is model output, and the model's input includes untrusted diff/PR
+ * content — a prompt injection that survives `INJECTION_GUARD` could still
+ * try to smuggle an HTML tag or a disguised phishing link into what gets
+ * posted as a real comment on the repo. Deliberately a small, testable,
+ * regex-based neutralizer (not a full HTML/markdown sanitizer library):
+ *  - raw HTML tags (`<script>`, `<img onerror=...>`, ...) are escaped to
+ *    literal text, since GitHub's markdown renderer allows some raw HTML;
+ *  - markdown link/image syntax (`[label](url)`, `![alt](url)`) is escaped
+ *    so it can't render as a clickable/loadable link — the bracket/paren
+ *    escaping only applies within a matched link/image construct, so plain
+ *    prose using `[]`/`()` elsewhere is left untouched.
+ */
+const HTML_TAG_RE = /<\/?[a-zA-Z][^>]*>/g;
+const MARKDOWN_LINK_RE = /!?\[[^\]\n]*\]\([^)\n]*\)/g;
+
+function escapeHtmlTags(text: string): string {
+  return text.replace(HTML_TAG_RE, (tag) => tag.replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+}
+
+function escapeMarkdownLinks(text: string): string {
+  return text.replace(MARKDOWN_LINK_RE, (link) => link.replace(/[[\]()]/g, (c) => `\\${c}`));
+}
+
+export function sanitizeFindingText(text: string): string {
+  if (!text) return text;
+  return escapeMarkdownLinks(escapeHtmlTags(text));
+}
+
 const SEV_EMOJI: Record<string, string> = {
   CRITICAL: '🔴',
   WARNING: '🟡',
@@ -88,8 +119,10 @@ function composeBody(
   const lines = findings.map((f) => {
     const emoji = SEV_EMOJI[f.severity] ?? '•';
     const loc = `\`${f.file}:${f.start_line}${f.end_line !== f.start_line ? `-${f.end_line}` : ''}\``;
-    const sugg = f.suggestion ? `\n  - _Suggestion:_ ${f.suggestion}` : '';
-    return `- ${emoji} **${f.title}** (${f.severity.toLowerCase()}, ${f.category}) — ${loc}\n  - ${f.rationale}${sugg}`;
+    const safeTitle = sanitizeFindingText(f.title);
+    const safeRationale = sanitizeFindingText(f.rationale);
+    const sugg = f.suggestion ? `\n  - _Suggestion:_ ${sanitizeFindingText(f.suggestion)}` : '';
+    return `- ${emoji} **${safeTitle}** (${f.severity.toLowerCase()}, ${f.category}) — ${loc}\n  - ${safeRationale}${sugg}`;
   });
 
   const summary = `**${findings.length} finding${findings.length === 1 ? '' : 's'}** · ${severityCounts(findings)}`;
@@ -134,11 +167,13 @@ function inlineComments(
       ? resolveCommentLine(lineIndex.get(f.file) ?? new Set<number>(), f.start_line, f.end_line)
       : f.end_line;
     if (line == null) continue;
+    const safeTitle = sanitizeFindingText(f.title);
+    const safeRationale = sanitizeFindingText(f.rationale);
     out.push({
       path: f.file,
       line,
-      body: `**${f.title}** (${f.severity.toLowerCase()})\n\n${f.rationale}${
-        f.suggestion ? `\n\n_Suggestion:_ ${f.suggestion}` : ''
+      body: `**${safeTitle}** (${f.severity.toLowerCase()})\n\n${safeRationale}${
+        f.suggestion ? `\n\n_Suggestion:_ ${sanitizeFindingText(f.suggestion)}` : ''
       }`,
     });
   }

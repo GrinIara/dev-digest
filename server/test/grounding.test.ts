@@ -59,9 +59,26 @@ describe('citation grounding gate', () => {
     expect(res.dropped[0]!.reason).toMatch(/not present in diff/);
   });
 
-  it('full-file kinds (secret_leak) ground against the file, not a hunk', () => {
+  it('drops secret_leak/lethal_trifecta findings with no evidence (no self-declared bypass)', () => {
     const res = groundFindings(
       [f({ file: 'src/config.ts', start_line: 1, end_line: 1, kind: 'secret_leak' })],
+      diff,
+    );
+    expect(res.kept).toHaveLength(0);
+    expect(res.dropped[0]!.reason).toMatch(/requires non-empty evidence/);
+  });
+
+  it('keeps secret_leak findings whose evidence cites a real diff line', () => {
+    const res = groundFindings(
+      [
+        f({
+          file: 'src/config.ts',
+          start_line: 1,
+          end_line: 1,
+          kind: 'secret_leak',
+          evidence: [{ component: 'exfil_path', file: 'src/config.ts', line: 11 }],
+        }),
+      ],
       diff,
     );
     expect(res.kept).toHaveLength(1);

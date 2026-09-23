@@ -6,6 +6,7 @@
   "description": "Deterministic browser e2e for the DevDigest web app, driven by Vercel agent-browser (CDP, no LLM).",
   "scripts": {
     "test": "tsx run.ts",
+    "test:unit": "tsx --test lib/*.test.ts",
     "e2e:hermetic": "../scripts/e2e.sh",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint ."

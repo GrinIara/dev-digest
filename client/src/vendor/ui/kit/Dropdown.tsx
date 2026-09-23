@@ -33,14 +33,27 @@ function DropdownItem({ it, onClose }: { it: DropdownItemDef; onClose: () => voi
       <span style={{ flex: 1 }}>{it.label}</span>
       {it.hint && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{it.hint}</span>}
       {it.onRemove && (
+        // A real nested <button> isn't valid here (DropdownItem's own root
+        // element is already a <button>, and interactive content can't
+        // nest) — keep role="button" but make it keyboard-operable, matching
+        // ReviewRunAccordion.tsx's tabIndex + onKeyDown pattern.
         <span
           role="button"
+          tabIndex={0}
           aria-label={it.removeLabel ?? "Remove"}
           title={it.removeLabel ?? "Remove"}
           onClick={(e) => {
             e.stopPropagation();
             it.onRemove!();
             onClose();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              it.onRemove!();
+              onClose();
+            }
           }}
           style={{
             display: "inline-flex",
@@ -49,6 +62,7 @@ function DropdownItem({ it, onClose }: { it: DropdownItemDef; onClose: () => voi
             padding: 3,
             borderRadius: 5,
             color: "var(--text-muted)",
+            cursor: "pointer",
             flexShrink: 0,
           }}
         >

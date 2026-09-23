@@ -2,7 +2,7 @@
 
 Append-only log of gotchas and non-obvious decisions discovered *after* the
 fact — not upfront design. If an entry becomes load-bearing enough that every
-session needs it, promote it into `CLAUDE.md` instead. Don't duplicate an
+session needs it, promote it into `AGENTS.md` instead. Don't duplicate an
 existing entry, even reworded — extend it instead. Past ~150 entries, move
 older/superseded ones into `Insights-archive.md`.
 
@@ -28,3 +28,6 @@ While building the PR-list FINDINGS column, found `client/src/lib/types.ts:38-48
 
 ## 2026-09-19 — [Context] Follow-up citation: exact file:line for the 2026-09-18 "Timeline run tiles… cross-referencing" entry
 `findingsByRunId` is built in `.../FindingsTab/FindingsTab.tsx:78` and passed to `RunHistory` at `FindingsTab.tsx:146`. `RunHistory.tsx` declares the prop at `RunHistory.tsx:119` and reads it per-run at `RunHistory.tsx:176` (`findingsByRunId?.get(r.run_id) ?? []`).
+
+## 2026-09-19 — [Mistake] A nested `position:absolute` floating panel gets clipped by an `overflow:hidden` ancestor — portal it instead
+`FindingsHoverPopover` (`vendor/ui/kit/FindingsHoverPopover.tsx`) originally rendered its panel as a `position:absolute` child nested inside the hovered trigger. Both real call sites sit inside an `overflow:hidden` ancestor — the PR list's `tableCard` (`app/repos/[repoId]/pulls/styles.ts:90`) and the Review-run accordion's rounded card (`ReviewRunAccordion.tsx:67`) — so the panel got silently clipped/invisible instead of floating on top, which unit tests never caught (jsdom doesn't apply CSS clipping, so `screen.findByText(...)` still passed). Fixed by rendering the panel via `createPortal(..., document.body)` with `position:fixed` coordinates computed from the trigger's `getBoundingClientRect()` (`FindingsHoverPopover.tsx:15,60,90`) and a high `zIndex:1000` (`:107`) — a body-level portal can't be clipped or out-stacked by any ancestor, by construction. Also needed a short close-delay (`CLOSE_DELAY_MS`, `:32,72`) so moving the cursor from the trigger into the now-detached-in-the-DOM popover doesn't flicker it shut. When adding any new hover/floating panel in this codebase, check for an `overflow:hidden` ancestor first — if one exists (or might later), portal to `document.body` from the start rather than nesting `position:absolute`.

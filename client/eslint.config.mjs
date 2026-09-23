@@ -1,6 +1,7 @@
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
+import nextPlugin from '@next/eslint-plugin-next';
 
 export default tseslint.config(
   {
@@ -19,6 +20,18 @@ export default tseslint.config(
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+    },
+  },
+  {
+    // @next/eslint-plugin-next ships eslintrc-style `configs` only (no flat
+    // export yet) — wire the "core-web-vitals" rule set by hand, per Next's
+    // own documented flat-config recipe: recommended + the two rules it
+    // upgrades to error.
+    plugins: { '@next/next': nextPlugin },
+    rules: {
+      ...nextPlugin.configs.recommended.rules,
+      '@next/next/no-html-link-for-pages': 'error',
+      '@next/next/no-sync-scripts': 'error',
     },
   },
   {

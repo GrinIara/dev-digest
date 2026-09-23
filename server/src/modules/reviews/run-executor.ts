@@ -183,6 +183,16 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // A2/A1 — this agent's bound skills (Skills Lab), in editor order.
+      // `enabled` here is the skill's own global toggle (not the agent-link
+      // checkbox, which is "is it bound at all"): a bound-but-disabled skill
+      // must not be sent, same as a bound-but-disabled agent wouldn't run.
+      const linkedSkills = await this.agents.linkedSkills(agent.id);
+      const skills = linkedSkills
+        .filter((l) => l.skill.enabled)
+        .map((l) => ({ id: l.skill.id, body: l.skill.body }));
+      if (skills.length > 0) runLog.info(`${skills.length} skill(s) bound to this agent`);
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -195,6 +205,9 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // Skills Lab — omit the section entirely when the agent has none bound
+        // (assemblePrompt's existing omit-when-empty contract).
+        ...(skills.length > 0 ? { skills } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),

@@ -13,6 +13,11 @@ export const s = {
     cursor: "pointer",
     background: hover ? "var(--bg-surface)" : "transparent",
     transition: "background .1s",
+    // The row is a next/link <Link> now (finding #8 — real anchor, keyboard-
+    // reachable, ctrl/cmd-clickable) — strip the browser's default anchor
+    // underline/color so it still reads as a plain table row.
+    color: "inherit",
+    textDecoration: "none",
   }),
   rowTitleCell: {
     minWidth: 0,

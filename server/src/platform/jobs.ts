@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import * as t from '../db/schema.js';
 import { withTimeout, withRetry } from './resilience.js';
+import { redactUrlCredentials } from './redact.js';
 
 /**
  * JobRunner — async work (clone, PR import, indexing, polling) on a
@@ -90,7 +91,9 @@ export class JobRunner {
           .set({
             status: 'failed',
             finishedAt: new Date(),
-            error: (err as Error).message,
+            // Redact any embedded URL credentials (e.g. a GitHub PAT in a
+            // clone-failure error) before persisting — see redact.ts.
+            error: redactUrlCredentials((err as Error).message),
           })
           .where(eq(t.jobs.id, jobId));
         throw err;

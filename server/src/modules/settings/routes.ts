@@ -72,6 +72,10 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
       config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
     },
     async (req): Promise<ConnTestResult> => {
+    // Matches every other route in this file — the return value isn't used
+    // yet (no real auth wired in), but this keeps the route from silently
+    // staying unauthenticated once it is.
+    await getContext(container, req);
     const { provider, key } = req.body;
     try {
       // If the UI supplied a key, persist it (BYO key) before testing so the

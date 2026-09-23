@@ -35,16 +35,25 @@ export default function PullsPage() {
   const { data: pulls, isLoading, isError, error, refetch } = usePulls(repoId);
   const refresh = useRefreshRepo();
 
-  // Default to "needs review" — the most actionable filter on open.
-  const status = search.get("status") ?? "needs_review";
-  const setStatus = (k: string) => {
+  // Filters/sort all live in the URL (?status&query&sort) — consistent
+  // treatment for every list control, and it makes a filtered view linkable
+  // /back-button-able instead of resetting on navigation.
+  const setParam = (key: string, val: string | null) => {
     const sp = new URLSearchParams(search.toString());
-    sp.set("status", k); // always explicit so "all" sticks over the needs_review default
-    router.replace(`/repos/${repoId}/pulls?${sp.toString()}`);
+    if (val == null) sp.delete(key);
+    else sp.set(key, val); // always explicit so a non-default value sticks
+    router.replace(`/repos/${repoId}/pulls${sp.toString() ? `?${sp.toString()}` : ""}`);
   };
 
-  const [query, setQuery] = React.useState("");
-  const [sort, setSort] = React.useState("newest");
+  // Default to "needs review" — the most actionable filter on open.
+  const status = search.get("status") ?? "needs_review";
+  const setStatus = (k: string) => setParam("status", k);
+
+  const query = search.get("query") ?? "";
+  const setQuery = (v: string) => setParam("query", v || null);
+
+  const sort = search.get("sort") ?? "newest";
+  const setSort = (v: string) => setParam("sort", v === "newest" ? null : v);
 
   const q = query.trim().toLowerCase();
   const filtered = (pulls ?? [])

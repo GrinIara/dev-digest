@@ -68,6 +68,10 @@ export class OpenRouterProvider implements LLMProvider {
     // returned `raw` field don't need a null check.
     // eslint-disable-next-line no-useless-assignment
     let lastRaw = '';
+    // The last Zod/parse error seen, surfaced in the thrown error if every
+    // retry is exhausted — otherwise the diagnostic (which schema field
+    // failed and why) is lost, leaving only a generic "failed" message.
+    let lastError = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       const res = await this.client.chat.completions.create({
@@ -113,10 +117,13 @@ export class OpenRouterProvider implements LLMProvider {
           attempts: attempt,
         };
       }
+      lastError = parsed.error;
       messages.push({ role: 'assistant', content: lastRaw });
       messages.push({ role: 'user', content: parsed.repromptMessage });
     }
-    throw new Error(`OpenRouter structured output failed schema validation for ${req.schemaName}`);
+    throw new Error(
+      `OpenRouter structured output failed schema validation for ${req.schemaName}: ${lastError}`,
+    );
   }
 
   /**

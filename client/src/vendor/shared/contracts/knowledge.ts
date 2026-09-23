@@ -83,6 +83,24 @@ export const EvalCase = z.object({
 });
 export type EvalCase = z.infer<typeof EvalCase>;
 
+// A single persisted `eval_runs` row (1:1 with the DB table) — the "Run on
+// evals" action's result for one eval case. NOT the same shape as `EvalRun`
+// above, which is an aggregate summary across many traces/cases (a future
+// "run all cases for this owner" view); that contract is left untouched.
+export const EvalCaseRun = z.object({
+  id: z.string(),
+  case_id: z.string(),
+  ran_at: z.string(),
+  actual_output: z.unknown(),
+  pass: z.boolean().nullable(),
+  recall: z.number().nullable(),
+  precision: z.number().nullable(),
+  citation_accuracy: z.number().nullable(),
+  duration_ms: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+});
+export type EvalCaseRun = z.infer<typeof EvalCaseRun>;
+
 // ---- Memory ----
 export const MemoryScope = z.enum(['repo', 'global', 'team']);
 export type MemoryScope = z.infer<typeof MemoryScope>;
@@ -131,6 +149,18 @@ export const Skill = z.object({
 });
 export type Skill = z.infer<typeof Skill>;
 
+// The immutable body snapshot captured in `skill_versions` whenever a skill's
+// config changes (anything but `enabled`) — mirrors the shape written by the
+// skills repository. Used for version history / diff in the Skill editor.
+export const SkillVersion = z.object({
+  skill_id: z.string(),
+  version: z.number().int(),
+  body: z.string(),
+  change_summary: z.string().nullable(),
+  created_at: z.string(),
+});
+export type SkillVersion = z.infer<typeof SkillVersion>;
+
 export const CommunitySkill = z.object({
   name: z.string(),
   repo: z.string(),
@@ -141,17 +171,82 @@ export const CommunitySkill = z.object({
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
 
 // ---- Conventions ----
+export const ConventionCategory = z.enum([
+  'naming',
+  'structure',
+  'errors',
+  'testing',
+  'imports',
+  'typing',
+  'api',
+  'general',
+]);
+export type ConventionCategory = z.infer<typeof ConventionCategory>;
+
+/**
+ * Triage state of a candidate. Three states, not a boolean: a re-scan replaces
+ * only `pending` rows, so `rejected` is what keeps a rule the user dismissed
+ * from reappearing on every scan.
+ */
+export const ConventionStatus = z.enum(['pending', 'accepted', 'rejected']);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
+/**
+ * One extracted house-rule proposal. `evidence_path` / `evidence_line` /
+ * `evidence_snippet` are VERIFIED server-side against the checked-out file
+ * before the row is written — a candidate whose snippet is not in the file is
+ * dropped, never persisted, so everything the UI shows is real code.
+ */
 export const ConventionCandidate = z.object({
   id: z.string(),
+  repo_id: z.string().nullish(),
+  category: ConventionCategory,
   rule: z.string(),
+  rationale: z.string().nullish(),
   evidence_path: z.string(),
+  evidence_line: z.number().int().nullish(),
   evidence_snippet: z.string(),
   confidence: z.number().min(0).max(1),
-  accepted: z.boolean(),
+  status: ConventionStatus,
+  created_at: z.string().nullish(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
 
+/**
+ * Result of `POST /repos/:id/conventions/extract`. The counters explain the gap
+ * between what the model proposed and what survived — `dropped_ungrounded` is
+ * the code-side evidence gate doing its job, and the UI reports it so a thin
+ * result set reads as "the gate worked", not "the feature is broken".
+ */
+export const ConventionExtractResult = z.object({
+  candidates: z.array(ConventionCandidate),
+  sampled_files: z.array(z.string()),
+  proposed: z.number().int(),
+  dropped_ungrounded: z.number().int(),
+  dropped_duplicate: z.number().int(),
+  model: z.string(),
+  cost_usd: z.number().nullish(),
+});
+export type ConventionExtractResult = z.infer<typeof ConventionExtractResult>;
+
+/**
+ * The skill draft assembled from accepted candidates. Persists NOTHING — the
+ * user edits it in the modal and then POSTs it to `/skills`, the same
+ * preview-then-confirm flow skill import uses.
+ */
+export const ConventionSkillDraft = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  evidence_files: z.array(z.string()),
+  convention_ids: z.array(z.string()),
+});
+export type ConventionSkillDraft = z.infer<typeof ConventionSkillDraft>;
+
 // ---- Agents ----
+// 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a
+// custom baseURL) — used by the CI runner for cheap models (DeepSeek/GLM/MiniMax).
 export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
 export type Provider = z.infer<typeof Provider>;
 
@@ -162,8 +257,12 @@ export type Provider = z.infer<typeof Provider>;
 export const ReviewStrategy = z.enum(['single-pass', 'map-reduce', 'auto']);
 export type ReviewStrategy = z.infer<typeof ReviewStrategy>;
 
-// CI gate policy — when a CI review should BLOCK (REQUEST_CHANGES + fail the
-// check) vs just comment. Deterministic from severities; acted on ONLY in CI.
+// CI gate policy — when a review should BLOCK (REQUEST_CHANGES + fail the check)
+// vs just comment. Deterministic from finding severities, NOT the model's verdict:
+//  - never:    never block, always comment (advisory only)
+//  - critical: block iff >=1 CRITICAL finding (default)
+//  - warning:  block iff >=1 WARNING or CRITICAL finding
+//  - any:      block iff >=1 finding of any severity
 export const CiFailOn = z.enum(['never', 'critical', 'warning', 'any']);
 export type CiFailOn = z.infer<typeof CiFailOn>;
 
@@ -191,3 +290,28 @@ export const AgentSkillLink = z.object({
   order: z.number().int(),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
+
+// The immutable config snapshot captured in `agent_versions` whenever an agent's
+// config changes (everything but `enabled`). Mirrors the shape written by the
+// agents repository — provider/model/prompt/output_schema/strategy/gate/repo_intel
+// plus the ordered skill ids linked at snapshot time. Used for reproducibility
+// (eval replays a past version) and for surfacing an agent's edit history.
+export const AgentVersionConfig = z.object({
+  provider: Provider,
+  model: z.string(),
+  system_prompt: z.string(),
+  output_schema: z.unknown().nullish(),
+  strategy: ReviewStrategy,
+  ci_fail_on: CiFailOn,
+  repo_intel: z.boolean(),
+  skills: z.array(z.string()),
+});
+export type AgentVersionConfig = z.infer<typeof AgentVersionConfig>;
+
+export const AgentVersion = z.object({
+  agent_id: z.string(),
+  version: z.number().int(),
+  config: AgentVersionConfig,
+  created_at: z.string(),
+});
+export type AgentVersion = z.infer<typeof AgentVersion>;
