@@ -50,7 +50,8 @@ describe("DiffTab — Smart/Original toggle (R6)", () => {
     // Smart mode: role group headers are visible.
     expect(screen.getByText("Core")).toBeInTheDocument();
     expect(screen.getByText("Tests")).toBeInTheDocument();
-    expect(screen.getByText("src/config.ts")).toBeInTheDocument();
+    // Groups start collapsed, so file paths are hidden until a header is clicked.
+    expect(screen.queryByText("src/config.ts")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Original order"));
 

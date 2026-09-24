@@ -47,7 +47,7 @@ const GROUPS: ResolvedGroup[] = [
 const noFileProps = () => ({});
 
 describe("SmartDiffGroups (R6)", () => {
-  it("shows headers in role order with labels and file counts, an expanded core/tests and collapsed docs/boilerplate, and a hidden ● at 0", () => {
+  it("shows headers in role order with labels and file counts, every group collapsed by default, and a hidden ● at 0", () => {
     renderWithIntl(<SmartDiffGroups groups={GROUPS} fileProps={noFileProps} />);
 
     const headers = screen.getAllByRole("button");
@@ -58,22 +58,18 @@ describe("SmartDiffGroups (R6)", () => {
       "Boilerplate",
     ]);
 
-    // core: expanded by default, files visible, ● 2 shown
-    expect(headers[0]).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("src/config.ts")).toBeInTheDocument();
+    // core: ● 2 and "2 files" visible on the collapsed header
     expect(within(headers[0]!).getByText("● 2")).toBeInTheDocument();
     expect(within(headers[0]!).getByText("2 files")).toBeInTheDocument();
 
-    // tests: expanded, no ● (0 findings)
-    expect(headers[1]).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("src/config.test.ts")).toBeInTheDocument();
+    // tests: no ● (0 findings)
     expect(within(headers[1]!).queryByText(/^●/)).not.toBeInTheDocument();
 
-    // docs/boilerplate start collapsed — file paths not visible
-    expect(headers[2]).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("docs/readme.md")).not.toBeInTheDocument();
-    expect(headers[3]).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("pnpm-lock.yaml")).not.toBeInTheDocument();
+    // every group starts collapsed — no file paths visible
+    for (const h of headers) expect(h).toHaveAttribute("aria-expanded", "false");
+    for (const p of ["src/config.ts", "src/config.test.ts", "docs/readme.md", "pnpm-lock.yaml"]) {
+      expect(screen.queryByText(p)).not.toBeInTheDocument();
+    }
   });
 
   it("reveals a collapsed group's files when its header is clicked", () => {
