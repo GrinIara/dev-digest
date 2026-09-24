@@ -56,9 +56,23 @@ export const ReviewRunResponse = z.object({
 });
 export type ReviewRunResponse = z.infer<typeof ReviewRunResponse>;
 
-/** Intent persisted for a PR (the Intent plus the pr_id it scopes). */
-export const PrIntentRecord = Intent.extend({ pr_id: z.string() });
+/** Intent persisted for a PR (the Intent plus the pr_id it scopes and the
+    classifier metadata needed to detect staleness). */
+export const PrIntentRecord = Intent.extend({
+  pr_id: z.string(),
+  model: z.string().nullable(),
+  head_sha: z.string().nullable(),
+  classified_at: z.string(),
+});
 export type PrIntentRecord = z.infer<typeof PrIntentRecord>;
+
+/** Response of `GET /pulls/:id/intent`. `stale` is true when the PR's head
+    has moved since `head_sha` was classified against. */
+export const PrIntentResponse = z.object({
+  intent: PrIntentRecord.nullable(),
+  stale: z.boolean(),
+});
+export type PrIntentResponse = z.infer<typeof PrIntentResponse>;
 
 /** Smart-diff response for a PR (the SmartDiff). */
 export const SmartDiffResponse = SmartDiff;

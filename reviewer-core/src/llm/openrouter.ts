@@ -74,22 +74,36 @@ export class OpenRouterProvider implements LLMProvider {
     let lastError = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await this.client.chat.completions.create({
-        model: req.model,
-        messages,
-        temperature: req.temperature ?? 0,
-        ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+      const res = await this.client.chat.completions.create(
+        {
+          model: req.model,
+          messages,
+          temperature: req.temperature ?? 0,
+          ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+          },
+          // OpenRouter session grouping — extra body field (spread is exempt from
+          // excess-property checks). Only sent when talking to OpenRouter.
+          ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
+          // OpenRouter usage accounting — ask it to return the REAL generation
+          // cost (USD) in `usage.cost`, instead of estimating from a price book.
+          ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
         },
-        // OpenRouter session grouping — extra body field (spread is exempt from
-        // excess-property checks). Only sent when talking to OpenRouter.
-        ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
-        // OpenRouter usage accounting — ask it to return the REAL generation
-        // cost (USD) in `usage.cost`, instead of estimating from a price book.
-        ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
-      });
+        // Per-call timeout override. The constructor-level `timeoutMs` (opts,
+        // default 90s) only sets the CLIENT's default — the SDK reads that
+        // default once at construction time, so a caller like reviewer-core's
+        // `classifyIntent` (which sets a per-request `req.timeoutMs`, e.g. 8s
+        // for the intent classifier vs. 90s+ for a full review) had no way to
+        // actually shorten a single call. This second `create()` argument is
+        // the SDK's own per-request `RequestOptions`; its `timeout` field
+        // drives a REAL `AbortController.abort()` on the underlying fetch
+        // (see `openai`'s `core.js` `fetchWithTimeout`), not just a promise
+        // race — so an expired `req.timeoutMs` now actually cancels the HTTP
+        // request instead of leaving it running in the background.
+        req.timeoutMs ? { timeout: req.timeoutMs } : undefined,
+      );
 
       // OpenRouter can return HTTP 200 with no `choices` (an upstream provider
       // error / moderation / free-tier limit in the body) — surface it.

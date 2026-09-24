@@ -78,6 +78,26 @@ export const Review = z.object({
 });
 export type Review = z.infer<typeof Review>;
 
+/** Whether a finding concerns the PR's declared in-scope work. Only used
+    when an `Intent` is available (the intent-layer scope filter, T4);
+    absent otherwise. */
+export const ScopeTag = z.enum(['in', 'out']);
+export type ScopeTag = z.infer<typeof ScopeTag>;
+
+export const ScopedFinding = Finding.extend({
+  scope: ScopeTag.nullish().describe(
+    '"in" if the finding concerns the declared in-scope work, "out" otherwise',
+  ),
+});
+export type ScopedFinding = z.infer<typeof ScopedFinding>;
+
+/** Structured-output schema used instead of `Review` when an intent is
+    present (see reviewer-core `review/run.ts`). */
+export const ScopedReview = Review.extend({
+  findings: z.array(ScopedFinding),
+});
+export type ScopedReview = z.infer<typeof ScopedReview>;
+
 /** Action taken on a finding (accept/dismiss/learn/reply). */
 export const FindingActionKind = z.enum(['accept', 'dismiss', 'learn', 'reply']);
 export type FindingActionKind = z.infer<typeof FindingActionKind>;

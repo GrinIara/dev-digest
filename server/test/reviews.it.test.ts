@@ -4,7 +4,7 @@ import { waitForPrRuns } from './helpers/runs.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
-import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
+import { MockLLMProvider, MockEmbedder, MockGitClient, MockSecretsProvider } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { Review } from '@devdigest/shared';
@@ -115,6 +115,13 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       config: config(),
       db: pg.handle.db,
       overrides: {
+        // Keyless — since T6 wired IntentClassifier into every review run,
+        // a missing llm.openrouter/github override here would otherwise
+        // silently fall through to LocalSecretsProvider and make a REAL
+        // OpenRouter + GitHub call using this machine's local secrets (see
+        // intent.it.test.ts's SAFETY comment for the same guard). This makes
+        // that path fail fast with ConfigError instead, deterministically.
+        secrets: new MockSecretsProvider({}),
         embedder: new MockEmbedder(),
         git: new MockGitClient({ diff: DIFF }),
         llm: {

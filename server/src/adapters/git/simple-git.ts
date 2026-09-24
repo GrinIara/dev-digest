@@ -1,5 +1,5 @@
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { mkdir, readFile, access, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import type {
@@ -126,8 +126,21 @@ export class SimpleGitClient implements GitClient {
     }));
   }
 
+  /**
+   * Reads a file from the local clone's working tree. HARDENED against path
+   * traversal (T5, intent layer): `path` can be attacker-controlled (e.g. a
+   * doc link parsed out of a PR description), so the resolved target is
+   * checked to stay inside the clone root before reading — defense in depth
+   * on top of `intent-links.ts`'s parser-level allowlist (which independently
+   * rejects `..`/absolute/`~`/backslash/NUL paths before this ever runs).
+   */
   async readFile(repo: RepoRef, path: string): Promise<string> {
-    return readFile(join(this.clonePathFor(repo), path), 'utf8');
+    const root = resolve(this.clonePathFor(repo));
+    const target = resolve(root, path);
+    if (target !== root && !target.startsWith(root + sep)) {
+      throw new Error('path escapes repository clone');
+    }
+    return readFile(target, 'utf8');
   }
 }
 

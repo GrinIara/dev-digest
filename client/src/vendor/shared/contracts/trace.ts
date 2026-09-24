@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { IntentConfidence, IntentSource } from './brief.js';
 
 /**
  * Run trace. The ENTIRE trace of one run is persisted as a SINGLE
@@ -48,6 +49,8 @@ export const PromptAssembly = z.object({
   repo_map: z.string().nullish(),
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),
+  /** Declared intent & scope block (untrusted-wrapped); null when absent. */
+  intent: z.string().nullish(),
   user: z.string(),
 });
 export type PromptAssembly = z.infer<typeof PromptAssembly>;
@@ -57,6 +60,41 @@ export const MemoryPulled = z.object({
   text: z.string(),
 });
 export type MemoryPulled = z.infer<typeof MemoryPulled>;
+
+/** Per-prompt-section char/token attribution for the intent classifier call. */
+export const IntentPromptComponent = z.object({
+  name: z.string(),
+  chars: z.number().int(),
+  approx_tokens: z.number().int(),
+});
+export type IntentPromptComponent = z.infer<typeof IntentPromptComponent>;
+
+/** Observability record for the intent classifier's own (cheap) LLM call —
+    kept separate from the agent's own `stats`, so classifier tokens/cost
+    are never double-counted into a review's totals. */
+export const IntentCallTrace = z.object({
+  status: z.enum(['classified', 'reused', 'failed']),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  duration_ms: z.number().int(),
+  tokens_in: z.number().int(),
+  tokens_out: z.number().int(),
+  cost_usd: z.number().nullable(),
+  approx_prompt_tokens: z.number().int(),
+  prompt_components: z.array(IntentPromptComponent),
+  sources: z.array(IntentSource),
+  confidence: IntentConfidence.nullable(),
+  error: z.string().nullable(),
+});
+export type IntentCallTrace = z.infer<typeof IntentCallTrace>;
+
+/** Counts from the post-grounding out-of-scope filter (T4). */
+export const ScopeFilterSummary = z.object({
+  applied: z.boolean(),
+  kept_out_of_scope: z.number().int(),
+  dropped_out_of_scope: z.number().int(),
+});
+export type ScopeFilterSummary = z.infer<typeof ScopeFilterSummary>;
 
 export const RunStats = z.object({
   duration_ms: z.number().int(),
@@ -86,6 +124,12 @@ export const RunTrace = z.object({
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
   log: z.array(RunLogLine),
+  /** The intent classifier's own call trace; nullish so old persisted traces
+      (before the intent layer) still parse. */
+  intent_call: IntentCallTrace.nullish(),
+  /** Out-of-scope filter summary; nullish so old persisted traces still
+      parse and so no-intent runs (e.g. the CI runner) omit it cleanly. */
+  scope_filter: ScopeFilterSummary.nullish(),
 });
 export type RunTrace = z.infer<typeof RunTrace>;
 

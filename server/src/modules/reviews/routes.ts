@@ -9,11 +9,13 @@ import { ReviewService } from './service.js';
 
 /**
  * reviews module.
- *   POST   /pulls/:id/review  {agentId} | {all:true}  → run review(s); returns runs
- *   GET    /runs/:id/events                            → SSE stream of RunEvent (replay-first)
- *   GET    /runs/:id/trace                             → the single-document RunTrace
- *   GET    /pulls/:id/reviews                          → persisted reviews + findings for a PR
- *   POST   /findings/:id/(accept|dismiss)              → finding actions
+ *   POST   /pulls/:id/review          {agentId} | {all:true}  → run review(s); returns runs
+ *   GET    /runs/:id/events                                    → SSE stream of RunEvent (replay-first)
+ *   GET    /runs/:id/trace                                     → the single-document RunTrace
+ *   GET    /pulls/:id/reviews                                  → persisted reviews + findings for a PR
+ *   GET    /pulls/:id/intent                                   → persisted intent + stale flag (T6)
+ *   POST   /pulls/:id/intent/classify                          → manual (re)classify (T6)
+ *   POST   /findings/:id/(accept|dismiss)                      → finding actions
  */
 const FINDING_ACTIONS = ['accept', 'dismiss'] as const;
 export default async function reviewsRoutes(appBase: FastifyInstance) {
@@ -130,6 +132,23 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(container, req);
     return service.reviewsForPull(workspaceId, req.params.id);
   });
+
+  // ---- Intent (T6, intent layer) -------------------------------------------
+  app.get('/pulls/:id/intent', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    return service.getIntent(workspaceId, req.params.id);
+  });
+
+  // Manual re-classify: synchronous (no run), so a tighter per-route limit —
+  // same pattern as the review-trigger route above.
+  app.post(
+    '/pulls/:id/intent/classify',
+    { schema: { params: IdParams }, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req) => {
+      const { workspaceId } = await getContext(container, req);
+      return service.reclassifyIntent(workspaceId, req.params.id, req.log);
+    },
+  );
 
   // ---- Delete a whole review run (one agent's pass) + its findings --------
   app.delete('/reviews/:id', { schema: { params: IdParams } }, async (req) => {

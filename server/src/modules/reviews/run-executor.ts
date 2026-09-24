@@ -1,5 +1,12 @@
 import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type {
+  IntentCallTrace,
+  PrIntentRecord,
+  Provider,
+  Review,
+  RunTrace,
+  UnifiedDiff,
+} from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
@@ -8,6 +15,7 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import { IntentClassifier } from './intent-classifier.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -36,16 +44,25 @@ export type RunOutcome = {
 
 /**
  * Owns the background execution of queued agent runs (extracted from
- * ReviewService; behaviour unchanged). Loads the diff + intent once, then
- * map-reduces each agent, streaming events over the runBus and persisting each
- * review. Per-agent failures are isolated.
+ * ReviewService). Loads the diff once, then derives (or reuses) the PR's
+ * intent ONCE via `IntentClassifier.ensureIntent` (T6, intent layer §0.3 step
+ * 3) — a single cheap classifier call shared across every queued agent in
+ * this batch, fanned out into each run's Live Log/trace by the shared
+ * `RunLogger`. It then map-reduces each agent (passing the derived intent
+ * into `reviewPullRequest`), streaming events over the runBus and persisting
+ * each review. Per-agent failures are isolated; a failed/absent intent never
+ * blocks a review (§0.3 step 3's degradation rule).
  */
 export class ReviewRunExecutor {
+  private intent: IntentClassifier;
+
   constructor(
     private container: Container,
     private repo: ReviewRepository,
     private agents: Container['agentsRepo'],
-  ) {}
+  ) {
+    this.intent = new IntentClassifier(container, repo);
+  }
 
   /**
    * Background execution of the queued agent runs (NOT awaited by the route).
@@ -104,6 +121,17 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // Intent classification (T4/T5/T6, intent layer) — ONE cheap call per
+    // `executeRuns` (reused across queued agents), before the per-agent loop.
+    // `ensureIntent` NEVER throws: intent must never block or fail a review,
+    // so a classifier error degrades to `{ intent: null, call: {status:
+    // 'failed', ...} }` and every agent below reviews without intent.
+    const { intent, call: intentCall } = await runLog.step(
+      'Deriving PR intent (cheap classifier)',
+      () => this.intent.ensureIntent(workspaceId, pull, repo, diff, runLog),
+      { kind: 'tool' },
+    );
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -111,7 +139,17 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(
+          workspaceId,
+          pull,
+          repo,
+          diff,
+          agent,
+          runId,
+          runLog,
+          intent,
+          intentCall,
+        );
         logger?.info(
           {
             runId,
@@ -143,6 +181,8 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    intent: PrIntentRecord | null,
+    intentCall: IntentCallTrace,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -216,6 +256,21 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // Intent layer (T6) — only when a stored/derived intent exists.
+        // `reviewPullRequest` switches to the `ScopedReview` schema + runs the
+        // scope filter only in this branch; absent intent is byte-identical
+        // to the pre-intent-layer prompt/schema (R3).
+        ...(intent
+          ? {
+              intent: {
+                summary: intent.summary,
+                in_scope: intent.in_scope,
+                out_of_scope: intent.out_of_scope,
+                risk_areas: intent.risk_areas,
+                confidence: intent.confidence,
+              },
+            }
+          : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -284,18 +339,32 @@ export class ReviewRunExecutor {
           grounding,
         },
         prompt_assembly: outcome.assembly,
-        tool_calls: outcome.chunks.map((c) => ({
-          tool: 'review_file',
-          args: c.label,
-          meta: outcome.mode,
-          ms: Math.round(durationMs / Math.max(outcome.chunks.length, 1)),
-        })),
+        tool_calls: [
+          // One `intent_classify` entry (shared across the fanned-out runs,
+          // identical `intentCall` for every agent) BEFORE the per-file
+          // `review_file` entries — the two LLM calls stay visibly distinct
+          // in the trace (R7).
+          {
+            tool: 'intent_classify',
+            args: intentCall.provider && intentCall.model ? `${intentCall.provider}/${intentCall.model}` : '(none)',
+            meta: intentCall.status,
+            ms: intentCall.duration_ms,
+          },
+          ...outcome.chunks.map((c) => ({
+            tool: 'review_file',
+            args: c.label,
+            meta: outcome.mode,
+            ms: Math.round(durationMs / Math.max(outcome.chunks.length, 1)),
+          })),
+        ],
         raw_output: outcome.raw,
         memory_pulled: [],
         specs_read: [],
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
+        intent_call: intentCall,
+        scope_filter: outcome.scope,
       };
       runLog.info('Run complete; trace persisted');
       await this.repo.saveRunTrace(runId, trace);
@@ -321,7 +390,10 @@ export class ReviewRunExecutor {
         })
         .catch(() => undefined);
       await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
+        .saveRunTrace(
+          runId,
+          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, intentCall),
+        )
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
@@ -426,6 +498,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     grounding: string,
     durationMs = 0,
+    intentCall?: IntentCallTrace,
   ): RunTrace {
     return {
       config: {
@@ -443,6 +516,10 @@ export class ReviewRunExecutor {
       memory_pulled: [],
       specs_read: [],
       log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
+      // Present when intent classification already ran before this run
+      // failed/cancelled (e.g. the agent's own LLM call failed); absent when
+      // the pre-work (diff load) itself failed before intent was derived.
+      intent_call: intentCall ?? null,
     };
   }
 }

@@ -10,6 +10,7 @@ import {
 import { assemblePrompt } from '../src/platform/prompt.js';
 import { groundFindings } from '../src/platform/grounding.js';
 import { estimateCost } from '../src/adapters/llm/pricing.js';
+import { SimpleGitClient } from '../src/adapters/git/simple-git.js';
 
 describe('mock adapters (no network)', () => {
   it('MockGitClient.diff parses into hunks with new line numbers', async () => {
@@ -96,6 +97,17 @@ describe('structured review pipeline (mock LLM → grounding)', () => {
     expect(grounded.kept[0]!.id).toBe('f1');
     expect(grounded.dropped[0]!.finding.id).toBe('f-hallucinated');
     expect(llm.calls.find((c) => c.method === 'completeStructured')).toBeTruthy();
+  });
+});
+
+describe('SimpleGitClient.readFile — path traversal guard (T5, R10)', () => {
+  it('rejects a path that resolves outside the repo clone', async () => {
+    const git = new SimpleGitClient('/tmp/devdigest-test-clones');
+    const repo = { owner: 'acme', name: 'payments-api' };
+
+    await expect(git.readFile(repo, '../outside/secret.txt')).rejects.toThrow(
+      'path escapes repository clone',
+    );
   });
 });
 

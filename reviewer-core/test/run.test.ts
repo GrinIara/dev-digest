@@ -104,6 +104,96 @@ describe('reviewPullRequest (engine)', () => {
     ).rejects.toThrow('cancelled');
   });
 
+  it('with a high-confidence intent: uses ScopedReview, drops an out-of-scope SUGGESTION, keeps an out-of-scope CRITICAL, and recomputes the score', async () => {
+    const scopedFixture = {
+      verdict: 'request_changes',
+      summary: 'secret key committed; unrelated style nit out of scope',
+      score: 38,
+      findings: [
+        {
+          id: 'f1',
+          severity: 'CRITICAL',
+          category: 'security',
+          title: 'Hardcoded Stripe secret key',
+          file: 'src/config.ts',
+          start_line: 11,
+          end_line: 11,
+          rationale: 'sk_live in diff',
+          confidence: 0.98,
+          kind: 'finding',
+          scope: 'out',
+        },
+        {
+          id: 'f2',
+          severity: 'SUGGESTION',
+          category: 'style',
+          title: 'formatting nit, out of scope',
+          file: 'src/config.ts',
+          start_line: 11,
+          end_line: 11,
+          rationale: 'not real work for this PR',
+          confidence: 0.3,
+          kind: 'finding',
+          scope: 'out',
+        },
+      ],
+    };
+    const llm = new MockLLMProvider('openai', {
+      structuredBySchema: { ScopedReview: scopedFixture },
+    });
+    const diff = await new MockGitClient().diff();
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'security reviewer',
+      model: 'gpt-4.1',
+      diff,
+      llm,
+      task: 'Review PR #482',
+      intent: {
+        summary: 'Add config',
+        in_scope: ['config'],
+        out_of_scope: ['secrets'],
+        risk_areas: [],
+        confidence: 'high',
+      },
+    });
+
+    const structuredCalls = llm.calls.filter((c) => c.method === 'completeStructured');
+    expect(structuredCalls).toHaveLength(1);
+    expect((structuredCalls[0]!.req as { schemaName: string }).schemaName).toBe('ScopedReview');
+
+    // The CRITICAL survives (grounded on line 11, in the diff); the
+    // non-serious out-of-scope SUGGESTION is dropped by the scope filter.
+    expect(outcome.review.findings).toHaveLength(1);
+    expect(outcome.review.findings[0]!.id).toBe('f1');
+    expect(outcome.review.findings[0]!.severity).toBe('CRITICAL');
+    expect(outcome.scope).not.toBeNull();
+    expect(outcome.scope!.applied).toBe(true);
+    expect(outcome.scope!.kept_out_of_scope).toBe(1);
+    expect(outcome.scope!.dropped_out_of_scope).toBe(1);
+    // Score recomputed from the survivors: one CRITICAL ⇒ 65.
+    expect(outcome.review.score).toBe(65);
+  });
+
+  it('without intent: uses the plain Review schema and the existing assertions are unchanged', async () => {
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const diff = await new MockGitClient().diff();
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'security reviewer',
+      model: 'gpt-4.1',
+      diff,
+      llm,
+      task: 'Review PR #482',
+    });
+
+    const structuredCalls = llm.calls.filter((c) => c.method === 'completeStructured');
+    expect((structuredCalls[0]!.req as { schemaName: string }).schemaName).toBe('Review');
+    expect(outcome.scope).toBeNull();
+    expect(outcome.review.findings).toHaveLength(1);
+    expect(outcome.review.score).toBe(65);
+  });
+
   it('forwards sessionId to every LLM call (OpenRouter session grouping)', async () => {
     const seen: (string | undefined)[] = [];
     const recorder: LLMProvider = {

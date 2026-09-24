@@ -66,8 +66,18 @@ describe('AI contracts parse fixtures', () => {
   });
 
   it('Intent / BlastRadius / Risks / PrHistory', () => {
+    // Fixture updated for the intent-layer contract change: `intent` was
+    // renamed to `summary`, and `confidence`/`sources`/`risk_areas` are now
+    // required (test-writing for the new negative cases is a separate pass).
     expect(() =>
-      Intent.parse({ intent: 'x', in_scope: ['a'], out_of_scope: ['b'] }),
+      Intent.parse({
+        summary: 'x',
+        in_scope: ['a'],
+        out_of_scope: ['b'],
+        risk_areas: ['c'],
+        confidence: 'high',
+        sources: [{ kind: 'title', ref: null, status: 'used', detail: null }],
+      }),
     ).not.toThrow();
     expect(() =>
       BlastRadius.parse({
@@ -102,6 +112,18 @@ describe('AI contracts parse fixtures', () => {
         ],
       }),
     ).not.toThrow();
+  });
+
+  it('Intent rejects a confidence outside the high|low enum', () => {
+    const result = Intent.safeParse({
+      summary: 'x',
+      in_scope: ['a'],
+      out_of_scope: ['b'],
+      risk_areas: ['c'],
+      confidence: 'medium',
+      sources: [{ kind: 'title', ref: null, status: 'used', detail: null }],
+    });
+    expect(result.success).toBe(false);
   });
 
   it('SmartDiff (data.jsx DIFF)', () => {

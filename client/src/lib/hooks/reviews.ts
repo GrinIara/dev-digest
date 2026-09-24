@@ -8,6 +8,7 @@ import { api, API_BASE } from "../api";
 import { notify } from "../toast";
 import type {
   FindingActionKind,
+  PrIntentResponse,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
@@ -53,6 +54,30 @@ export function usePrReviews(prId: string | null | undefined) {
     queryKey: ["reviews", prId],
     queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
     enabled: !!prId,
+  });
+}
+
+// ---- Derived PR intent (Intent Layer) ----
+/** The persisted intent for a PR (or null if never classified) + a `stale`
+   flag when the PR's head has moved since classification. */
+export function usePrIntent(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["pr-intent", prId],
+    queryFn: () => api.get<PrIntentResponse>(`/pulls/${prId}/intent`),
+    enabled: !!prId,
+  });
+}
+
+/** Manually (re-)classify a PR's intent; overwrites the cached record so the
+   Intent card reflects the fresh result without a refetch. */
+export function useReclassifyIntent(prId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<PrIntentResponse>(`/pulls/${prId}/intent/classify`),
+    onSuccess: (data) => {
+      qc.setQueryData(["pr-intent", prId], data);
+    },
+    onError: (e: Error) => notify.error(e.message || "Failed to classify intent"),
   });
 }
 

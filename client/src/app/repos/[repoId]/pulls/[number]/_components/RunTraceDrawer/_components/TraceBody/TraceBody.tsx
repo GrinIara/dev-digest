@@ -13,6 +13,7 @@ import { TraceSection } from "../TraceSection";
 import { ToolCallRow } from "../ToolCallRow";
 import { PromptBlock } from "../PromptBlock";
 import { FindingsSection } from "../FindingsSection";
+import { IntentCallSection } from "../IntentCallSection";
 import { Row, Stat } from "../atoms";
 
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
@@ -66,7 +67,22 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           <Stat label={t("trace.stat.cost")} val={formatCost(stats.cost_usd)} />
           <Stat label={t("trace.stat.findings")} val={stats.findings} />
         </div>
+        {trace.scope_filter != null && (
+          <div style={{ marginTop: 12 }}>
+            <Row label={t("trace.stat.scopeFilter")}>
+              <span>
+                {t("trace.intentCall.scopeFilterSummary", {
+                  applied: trace.scope_filter.applied ? "yes" : "no",
+                  kept: trace.scope_filter.kept_out_of_scope,
+                  dropped: trace.scope_filter.dropped_out_of_scope,
+                })}
+              </span>
+            </Row>
+          </div>
+        )}
       </TraceSection>
+
+      {trace.intent_call != null && <IntentCallSection call={trace.intent_call} />}
 
       <FindingsSection findings={findings} />
 
@@ -85,6 +101,14 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
         )}
         {trace.prompt_assembly.repo_map != null && (
           <PromptBlock label={t("trace.prompt.repoMap")} text={trace.prompt_assembly.repo_map} color={PROMPT_COLORS.repoMap} />
+        )}
+        {trace.prompt_assembly.intent != null && (
+          <PromptBlock
+            label={t("trace.prompt.intent")}
+            text={trace.prompt_assembly.intent}
+            color={PROMPT_COLORS.intent}
+            tokenCount={approxTokenCount(trace.prompt_assembly.intent)}
+          />
         )}
         {trace.prompt_assembly.specs != null && (
           <PromptBlock label={t("trace.prompt.specs")} text={trace.prompt_assembly.specs} color={PROMPT_COLORS.specs} />
