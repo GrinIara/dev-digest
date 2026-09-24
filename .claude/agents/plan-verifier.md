@@ -66,6 +66,7 @@ End with exactly:
 4. **Scope compliance**
 5. **Unverifiable → how to verify** — owner and command/steps
 6. **Out-of-scope observations** — clearly labeled; not counted in the verdict. Put quality opinions and suggestions here, never inside the matrix. Unmeasurable criteria are listed here as feedback for the planner.
+7. **Handoff summary** — one line per item that is **not** Met, nothing else: `<Item> — <Status> — <what's missing, ≤15 words>`. Omit Met items entirely. This section exists so a caller relaying gaps to the implementer can quote it verbatim instead of re-deriving or re-narrating the matrix — keep it terse, no prose, no repeated evidence already in §2.
 
 ## Hard rules
 

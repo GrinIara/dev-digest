@@ -111,6 +111,7 @@ End with exactly:
 5. **Known tradeoffs not re-flagged** — with citation
 6. **Out of scope** — security, correctness bugs, style; hand them to the security review / `pr-self-review`. Clearly labeled; not counted in the verdict.
 7. **Fitness-function candidates** — checks that could become `dependency-cruiser` or `eslint-plugin-boundaries` rules. Advisory only.
+8. **Handoff summary** — one line per Finding (skip "Needs human judgement", "Checks run clean", "Known tradeoffs", "Out of scope"): `<ID> · <Severity> · <file:line> · <fix, ≤15 words>`. Empty if there are no Findings. This section exists so a caller relaying fixes to the implementer can quote it verbatim instead of re-deriving or re-narrating §3 — keep it terse, no prose, no repeated snippets.
 
 ## Hard rules
 
