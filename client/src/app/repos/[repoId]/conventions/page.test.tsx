@@ -19,11 +19,13 @@ vi.mock("@/components/app-shell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+let repoNotFound = false;
+
 vi.mock("@/lib/repo-context", () => ({
   useActiveRepo: () => ({
     activeRepo: { id: "r1", full_name: "acme/payments-api", default_branch: "main" },
   }),
-  useRepoNotFound: () => false,
+  useRepoNotFound: () => repoNotFound,
 }));
 
 vi.mock("@/lib/hooks/conventions", () => ({
@@ -39,6 +41,10 @@ vi.mock("./_components/CreateSkillModal", () => ({
   CreateSkillModal: ({ acceptedCount }: { acceptedCount: number }) => (
     <div>modal open · {acceptedCount} accepted</div>
   ),
+}));
+
+vi.mock("@/components/repo-not-found", () => ({
+  RepoNotFound: () => <div>repo not found</div>,
 }));
 
 import ConventionsPage from "./page";
@@ -84,6 +90,7 @@ function renderPage() {
 
 beforeEach(() => {
   candidates = [];
+  repoNotFound = false;
   extract.mockReset();
   update.mockReset();
   draftSkill.mockReset();
@@ -188,5 +195,12 @@ describe("ConventionsPage", () => {
       "href",
       "https://github.com/acme/payments-api/blob/main/src/api/users.ts#L3",
     );
+  });
+
+  it("shows RepoNotFound instead of the board when the repo is unknown", () => {
+    repoNotFound = true;
+    renderPage();
+    expect(screen.getByText("repo not found")).toBeInTheDocument();
+    expect(screen.queryByText("Run extraction")).not.toBeInTheDocument();
   });
 });

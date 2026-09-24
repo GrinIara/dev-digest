@@ -7,8 +7,9 @@ import messages from "../../../../../../messages/en/agents.json";
 import { ToastProvider } from "../../../../../lib/toast";
 
 // ---- Mocked hooks/api (this package's convention: mock the hook module, not
-// a real fetch; the Skills tab's inline `GET /skills` read is the one call
-// that goes through `api` directly instead of a hook, so it's mocked there). --
+// a real fetch; the Skills tab reads the workspace skill list through the
+// shared `useSkills()` hook, which calls `api.get` under the hood, so the
+// `lib/api` mock below backs that real hook instead of being read directly). --
 
 const updateMutate = vi.fn();
 const setSkillsMutate = vi.fn();
