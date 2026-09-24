@@ -51,11 +51,14 @@ export function usePrDetailPage() {
   // When a run settles (done OR failed) refresh the full run history too, so a
   // just-failed run shows up in "Run history" immediately — no page reload.
   // Also refresh the Intent card: a run's first pass through executeRuns may
-  // have derived + persisted a PR's intent for the first time.
+  // have derived + persisted a PR's intent for the first time. Also refresh
+  // Smart Diff: a finished run changes the latest-per-agent findings behind
+  // the Smart Diff indicators (the `● N` counters and file dots).
   const invalidateRunHistory = () => {
     if (prId) {
       qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
       qc.invalidateQueries({ queryKey: ["pr-intent", prId] });
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
     }
   };
 

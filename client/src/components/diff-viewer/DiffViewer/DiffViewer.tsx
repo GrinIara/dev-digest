@@ -9,14 +9,16 @@ import { useTranslations } from "next-intl";
 import type { PrFile } from "@/lib/types";
 import { type DiffCommentApi } from "../comments";
 import { s } from "../styles";
-import { FileCard } from "../FileCard";
+import { FileCard, type FileCardProps } from "../FileCard";
 
 export function DiffViewer({
   files,
   commenting,
+  fileProps,
 }: {
   files: PrFile[];
   commenting?: DiffCommentApi;
+  fileProps?: (f: PrFile) => Omit<Partial<FileCardProps>, "file" | "commenting">;
 }) {
   const t = useTranslations("shell");
   if (!files || files.length === 0) {
@@ -24,8 +26,8 @@ export function DiffViewer({
   }
   return (
     <div style={s.list}>
-      {files.map((f, i) => (
-        <FileCard key={i} file={f} commenting={commenting} />
+      {files.map((f) => (
+        <FileCard key={f.path} file={f} commenting={commenting} {...(fileProps ? fileProps(f) : {})} />
       ))}
     </div>
   );

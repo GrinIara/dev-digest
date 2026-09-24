@@ -90,3 +90,36 @@ export function lineSignFor(kind: Line["kind"]): CSSProperties {
     flexShrink: 0,
   };
 }
+
+/** Small dot next to a file's path, marking that it has annotations. */
+export const markDot: CSSProperties = {
+  width: 6,
+  height: 6,
+  borderRadius: "50%",
+  background: "var(--accent)",
+  flexShrink: 0,
+  display: "inline-block",
+};
+
+/** Right-aligned pill for one annotation label on a code line. */
+export function annotationPill(color: string): CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    padding: "1px 6px",
+    borderRadius: 4,
+    color,
+    background: "var(--bg-elevated)",
+    border: `1px solid ${color}`,
+    flexShrink: 0,
+  };
+}
+
+/** Inset left bar for an annotated row — doesn't shift layout. */
+export function annotatedRow(color: string): CSSProperties {
+  return { boxShadow: `inset 3px 0 0 ${color}` };
+}
