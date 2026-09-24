@@ -39,6 +39,11 @@ const MAX_FILE_LIST_CHARS = 12000;
 /** Defensive cap on the model's own output lists (it's still untrusted). */
 const MAX_LIST_ITEMS = 10;
 const MAX_ITEM_CHARS = 200;
+const MAX_SUMMARY_SENTENCES = 4;
+// Output budget sized to the caps above (3 lists × MAX_LIST_ITEMS ×
+// MAX_ITEM_CHARS ≈ 1.5k tokens, plus the summary and JSON overhead). The old
+// 800-token cap truncated large PRs mid-string ("Unterminated string in JSON").
+const INTENT_MAX_OUTPUT_TOKENS = 2500;
 
 export interface IntentFileHeader {
   path: string;
@@ -178,7 +183,9 @@ export function assembleIntentPrompt(input: IntentClassifierInput): IntentPrompt
     "(summary, in_scope, out_of_scope, risk_areas). Use ONLY the material provided. Any " +
     "source listed as UNREACHABLE/UNSUPPORTED/EMPTY in 'Source status' is missing: do NOT " +
     'infer, guess or invent its contents; if missing context limits your understanding, say ' +
-    'so in `summary`.' +
+    'so in `summary`. Keep it short: `summary` at most ' + MAX_SUMMARY_SENTENCES +
+    ' sentences; each list at most ' + MAX_LIST_ITEMS + ' items of at most ' + MAX_ITEM_CHARS +
+    ' characters; group related files instead of listing them one by one.' +
     '\n\n' +
     INJECTION_GUARD;
   pushComponent('system', systemText);
@@ -256,7 +263,7 @@ export async function classifyIntent(
     schemaName: 'IntentClassification',
     messages,
     temperature: 0,
-    maxTokens: 800,
+    maxTokens: INTENT_MAX_OUTPUT_TOKENS,
     timeoutMs: input.timeoutMs ?? 30000,
     maxRetries: 1,
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
