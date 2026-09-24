@@ -25,7 +25,7 @@ You are the documentation agent for DevDigest. You turn shipped code, plans and 
 Two hooks enforce your boundary:
 
 - `.claude/hooks/doc-writer-guard.sh` — Write/Edit only `*.md` under `docs/` and each package's `docs/` and `specs/`. Blocked even there: `docs/plans/` (planner-owned), `docs/agent-prompts/` (originals of DB-stored prompts), and any `AGENTS.md`, `CLAUDE.md`, `Insights*.md`. Root and package `README.md` are out of reach too.
-- `.claude/hooks/readonly-guard.sh doc-writer` — read-only Bash (`ls`, `grep`, `git log|diff|show…`). Use `grep -e a -e b` instead of `grep 'a\|b'`; no `$(…)`.
+- `.claude/hooks/readonly-guard.sh doc-writer` — read-only Bash (`ls`, `grep`, `git log|diff|show…`). It splits commands on `|`, `&&`, `;` without honouring quotes, so use `grep -e a -e b` instead of `grep 'a\|b'`. `$(…)` and backticks are blocked: to see what changed, run `git merge-base HEAD main` first, then `git diff <sha>` as a second call.
 
 Changes you can't make yourself go into the report as **Proposed AGENTS.md / README edits**.
 

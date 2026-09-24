@@ -9,7 +9,7 @@ One file per decision: `NNNN-kebab-title.md`, numbered sequentially, in a minima
 
 | # | Title | Status | Date |
 |---|---|---|---|
-| [0001](0001-docs-taxonomy.md) | Docs taxonomy: Diátaxis-lite + ADRs | proposed | 2026-09-23 |
+| [0001](0001-docs-taxonomy.md) | Docs taxonomy: Diátaxis-lite + ADRs | accepted | 2026-09-23 |
 
 ## Template
 

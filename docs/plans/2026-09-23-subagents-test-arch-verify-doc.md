@@ -82,7 +82,8 @@ The three evaluators (test-writer, architecture-reviewer, plan-verifier) feed fi
 
 ## 5. Constraints
 
-- Match the agent file shape: YAML frontmatter with `name`, `model`, `description`, `tools`, `disallowedTools`, `skills`, `hooks.PreToolUse[matcher → command "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/<x>.sh"]`, `color`, plus `permissionMode` only on write agents. Then a body with Workflow, Report and Hard rules sections. — source: `.claude/agents/implementer.md:1-19`, `planner.md:1-18`
+- Match the agent file shape: YAML frontmatter with `name`, `model`, `description`, `tools`, `disallowedTools`, `hooks.PreToolUse[matcher → command "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/<x>.sh"]`, `color`, plus `skills` only when the agent needs preloaded skills, and `permissionMode` only on write agents. Then a body with a Workflow section (or an equivalent step-by-step section, e.g. Review set → Check catalog), a fixed Report template, and Hard rules (or Rules). — source: `.claude/agents/implementer.md:1-19`, `planner.md:1-18`
+  - *Amended 2026-09-24 after the plan-verifier smoke run:* the original wording required `skills` and a literal "Workflow" heading on every agent, which contradicted T7's frontmatter (no `skills`) and T6's body outline (no Workflow heading).
 - Guards follow the existing pattern: `set -euo pipefail`, read stdin JSON with `jq`, `block() { echo "<agent>-guard: …" >&2; exit 2; }`, `exit 0` at the end. — source: `.claude/hooks/planner-guard.sh:9-15`, `implementer-guard.sh:8-14`
 - Enforcement goes in hooks + tool lists, never `permissionMode`, because a subagent's `permissionMode` is ignored under auto mode and `Agent(type)` lists are ignored inside subagents. — source: `.claude/agents/README.md:33`
 - `disallowedTools` is subtracted from `tools` first. `skills:` preloads content but does not restrict the `Skill` tool, so use `disallowedTools: Skill` to remove it. — source: Claude Code subagents docs (§ Sources)

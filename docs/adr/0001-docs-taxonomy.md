@@ -1,6 +1,6 @@
 # 0001 — Docs taxonomy: Diátaxis-lite + ADRs
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-23
 
 ## Context and problem
