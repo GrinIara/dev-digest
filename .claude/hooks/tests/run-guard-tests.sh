@@ -37,6 +37,9 @@ RO=("$H/readonly-guard.sh" architecture-reviewer)
 RV=("$H/readonly-guard.sh" plan-verifier --verify)
 TW=("$H/test-writer-guard.sh")
 DW=("$H/doc-writer-guard.sh")
+PL=("$H/planner-guard.sh")
+SR=("$H/readonly-guard.sh" security-reviewer)
+BS=("$H/readonly-guard.sh" brainstorm)
 
 echo "## readonly-guard (base)"
 expect 0 "ro allow git diff range"   "$(bash_json 'git diff main...HEAD')" "${RO[@]}"
@@ -149,6 +152,28 @@ expect 2 "dw block e2e flow json"        "$(write_json "$R/e2e/specs/01-app-boot
 expect 2 "dw block non-md"               "$(write_json "$R/docs/x.txt")" "${DW[@]}"
 expect 2 "dw block .. traversal"         "$(write_json "$R/docs/../server/src/app.ts")" "${DW[@]}"
 expect 2 "dw block product code"         "$(write_json "$R/server/src/app.ts")" "${DW[@]}"
+
+
+echo "## planner-guard"
+existing_plan="$(ls "$R"/docs/plans/*.md | head -1)"
+expect 0 "pl allow create new plan"      "$(write_json "$R/docs/plans/2099-01-01-guard-test-new.md")" "${PL[@]}"
+expect 2 "pl block overwrite plan"       "$(write_json "$existing_plan")" "${PL[@]}"
+expect 2 "pl block Edit plan"            "$(edit_json "$existing_plan")" "${PL[@]}"
+expect 2 "pl block Edit product code"    "$(edit_json "$R/server/src/app.ts")" "${PL[@]}"
+expect 2 "pl block Write product code"   "$(write_json "$R/server/src/new.ts")" "${PL[@]}"
+expect 2 "pl block Write non-md plan"    "$(write_json "$R/docs/plans/x.txt")" "${PL[@]}"
+expect 2 "pl block .. traversal"         "$(write_json "$R/docs/plans/../../server/src/app.ts")" "${PL[@]}"
+expect 0 "pl allow read-only git"        "$(bash_json 'git log --oneline -5')" "${PL[@]}"
+expect 2 "pl block rm"                   "$(bash_json 'rm docs/plans/x.md')" "${PL[@]}"
+
+echo "## security-reviewer / brainstorm (readonly-guard base)"
+expect 0 "sr allow grep -e"              "$(bash_json 'grep -rn -e sql.raw -e dangerouslySetInnerHTML server/src client/src')" "${SR[@]}"
+expect 2 "sr block Write"                "$(write_json "$R/server/src/app.ts")" "${SR[@]}"
+expect 2 "sr block Edit"                 "$(edit_json "$R/server/src/app.ts")" "${SR[@]}"
+expect 2 "sr block curl"                 "$(bash_json 'curl http://localhost:3001/pulls')" "${SR[@]}"
+expect 0 "bs allow git log"              "$(bash_json 'git log --oneline -5')" "${BS[@]}"
+expect 2 "bs block Write plan"           "$(write_json "$R/docs/plans/2099-01-01-x.md")" "${BS[@]}"
+expect 2 "bs block Edit"                 "$(edit_json "$R/client/src/app/layout.tsx")" "${BS[@]}"
 
 echo
 echo "$pass passed, $fail failed"

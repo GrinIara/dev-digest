@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse guard for the `planner` subagent (.claude/agents/planner.md).
 # Enforces what frontmatter cannot:
-#   - Write/Edit only to docs/plans/*.md
+#   - Write only to create a NEW docs/plans/*.md (no overwrite); Edit/NotebookEdit always blocked
 #   - Agent only for researcher / Explore (Agent(type) lists are ignored in subagents)
 #   - Bash only for read-only inspection commands
 # Exit 2 = block; stderr is fed back to the agent.
@@ -15,11 +15,17 @@ root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 block() { echo "planner-guard: $1" >&2; exit 2; }
 
 case "$tool" in
-  Write|Edit)
+  Edit|NotebookEdit)
+    block "planner cannot edit existing files — it only creates a new docs/plans/*.md with Write"
+    ;;
+
+  Write)
     path="$(jq -r '.tool_input.file_path // empty' <<<"$input")"
     rel="${path#"$root"/}"
     [[ "$rel" == docs/plans/*.md && "$rel" != *..* ]] \
       || block "planner may only write docs/plans/*.md (got: $rel)"
+    [[ -e "$root/$rel" ]] \
+      && block "planner may only create a new plan file, not overwrite $rel — use a new slug (e.g. -v2)"
     ;;
 
   Agent)

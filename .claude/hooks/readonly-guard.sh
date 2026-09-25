@@ -2,8 +2,11 @@
 # Shared PreToolUse guard for read-only subagents.
 # Usage: readonly-guard.sh <agent-name> [--verify]
 #   architecture-reviewer  → base mode
+#   security-reviewer      → base mode
+#   brainstorm             → base mode
 #   doc-writer             → base mode (Bash matcher only; writes go through doc-writer-guard.sh)
 #   plan-verifier          → --verify (also allows the packages' existing typecheck/test/lint)
+#   mechanical-checker     → --verify
 # Enforces:
 #   - Write/Edit/NotebookEdit always blocked (defense-in-depth next to disallowedTools)
 #   - Bash only for read-only inspection commands (same allowlist as planner-guard.sh + diff/comm)
