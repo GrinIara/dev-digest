@@ -19,4 +19,6 @@ export const PROMPT_COLORS = {
   specs: "var(--text-secondary)",
   callers: "var(--warn)",
   user: "var(--ok)",
+  /** Declared intent & scope block (T8, intent layer); null when absent. */
+  intent: "var(--accent-text)",
 } as const;

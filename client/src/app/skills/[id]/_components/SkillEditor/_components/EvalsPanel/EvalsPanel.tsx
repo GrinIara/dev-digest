@@ -1,8 +1,11 @@
-/* EvalsPanel — owner-agnostic "Evals" tab body, shared by the Skill detail
-   panel and the Agent detail panel (owner_kind 'skill' | 'agent'). Lists
-   eval_cases for the owner, lets the user create one, run it ("Run on
-   evals"), and see its eval_runs history. One implementation, two callers —
-   avoids the Skill/Agent Evals tabs drifting out of sync. */
+/* EvalsPanel — the Skill detail panel's "Evals" tab body. Lists eval_cases
+   for the owner, lets the user create one, run it ("Run on evals"), and see
+   its eval_runs history. Stays owner-agnostic (`ownerKind: 'skill' | 'agent'`)
+   because the eval API itself is; it's colocated here because it has one
+   consumer today (`SkillEditor.tsx`) — the Agent Evals tab that used to be
+   its second consumer was deliberately removed (`8c1329e`, 2-tab grading
+   requirement). If a second consumer comes back, promote it back to
+   `src/components/evals-panel/`. */
 "use client";
 
 import React from "react";
@@ -26,7 +29,7 @@ import {
   useCreateEvalCase,
   useDeleteEvalCase,
   useRunEvalCase,
-} from "../../../lib/hooks/eval";
+} from "@/lib/hooks/eval";
 import { s } from "./styles";
 
 export function EvalsPanel({

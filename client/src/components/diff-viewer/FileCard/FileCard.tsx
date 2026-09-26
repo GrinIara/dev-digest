@@ -15,7 +15,9 @@ import {
   type CommentThread,
   type DiffCommentApi,
 } from "../comments";
-import { s, chevronFor } from "../styles";
+import { partitionAnnotations, type LineAnnotation, type LineAnnotationMap } from "../annotations";
+import { s, chevronFor, markDot } from "../styles";
+import { cs } from "../comments";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
 
@@ -30,12 +32,39 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
   return out;
 }
 
-export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
+/** Annotations anchored to a given parsed line (mirrors `threadsForLine`). */
+function annotationsForLine(ln: Line, matched: LineAnnotationMap): LineAnnotation[] {
+  if (matched.size === 0) return [];
+  const out: LineAnnotation[] = [];
+  for (const key of keysForLine(ln)) {
+    const list = matched.get(key);
+    if (list) out.push(...list);
+  }
+  return out;
+}
+
+export interface FileCardProps {
+  file: PrFile;
+  commenting?: DiffCommentApi;
+  defaultOpen?: boolean;
+  marked?: boolean;
+  annotations?: LineAnnotationMap;
+}
+
+export function FileCard({ file, commenting, defaultOpen, marked, annotations }: FileCardProps) {
   const t = useTranslations("shell");
   const [open, setOpen] = React.useState(
-    (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
+    defaultOpen ?? (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
   );
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
+
+  // Rendered line keys, shared by both the comment-thread and the annotation
+  // partitioning below (hoisted from the old comment-only computation).
+  const renderedKeys = React.useMemo(() => {
+    const keys = new Set<string>();
+    for (const ln of lines) for (const k of keysForLine(ln)) keys.add(k);
+    return keys;
+  }, [lines]);
 
   // Group this file's comments into threads, then split into ones we can anchor
   // to a rendered line vs. "outdated" (GitHub dropped the line / it's not here).
@@ -43,10 +72,13 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
   const { matched, outdated } = React.useMemo(() => {
     if (!comments) return { matched: new Map<string, CommentThread[]>(), outdated: [] };
     const fileThreads = buildThreads(comments.filter((c) => c.path === file.path));
-    const renderedKeys = new Set<string>();
-    for (const ln of lines) for (const k of keysForLine(ln)) renderedKeys.add(k);
     return partitionThreads(fileThreads, renderedKeys);
-  }, [comments, file.path, lines]);
+  }, [comments, file.path, renderedKeys]);
+
+  const { matched: matchedAnnotations, unanchored } = React.useMemo(
+    () => partitionAnnotations(annotations, renderedKeys),
+    [annotations, renderedKeys],
+  );
 
   const commentCount = commenting
     ? commenting.comments.filter((c) => c.path === file.path).length
@@ -60,6 +92,7 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
         <span className="mono" style={s.filePath}>
           {file.path}
         </span>
+        {marked && <span style={markDot} aria-label={t("diffViewer.marked")} />}
         <span className="mono tnum" style={s.fileStat}>
           <span style={s.addText}>+{file.additions}</span>{" "}
           <span style={s.delText}>−{file.deletions}</span>
@@ -85,10 +118,21 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
                 path={file.path}
                 threads={threadsForLine(ln, matched)}
                 commenting={commenting}
+                annotations={annotationsForLine(ln, matchedAnnotations)}
               />
             ))
           )}
           {commenting && commenting.showComments && <OutdatedComments threads={outdated} />}
+          {unanchored.length > 0 && (
+            <div style={cs.outdatedWrap}>
+              <span style={cs.outdatedTitle}>
+                {t("diffViewer.unanchoredTitle", { count: unanchored.length })}
+              </span>
+              {unanchored.map((a) => (
+                <React.Fragment key={a.id}>{a.content}</React.Fragment>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

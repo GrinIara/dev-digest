@@ -6,10 +6,53 @@ import { z } from 'zod';
  */
 
 // ---- Intent ----
-export const Intent = z.object({
-  intent: z.string(),
+export const IntentConfidence = z.enum(['high', 'low']);
+export type IntentConfidence = z.infer<typeof IntentConfidence>;
+
+export const IntentSourceKind = z.enum([
+  'title',
+  'description',
+  'linked_issue',
+  'linked_doc',
+  'file_list',
+]);
+export type IntentSourceKind = z.infer<typeof IntentSourceKind>;
+
+export const IntentSourceStatus = z.enum([
+  'used',
+  'truncated',
+  'empty',
+  'unreachable',
+  'unsupported',
+]);
+export type IntentSourceStatus = z.infer<typeof IntentSourceStatus>;
+
+export const IntentSource = z.object({
+  kind: IntentSourceKind,
+  ref: z.string().nullable(),
+  status: IntentSourceStatus,
+  detail: z.string().max(200).nullable(),
+});
+export type IntentSource = z.infer<typeof IntentSource>;
+
+/**
+ * The LLM structured-output schema for the intent classifier. All fields are
+ * required (no `.optional()`) — this schema is used in strict json_schema
+ * mode, which rejects optional fields.
+ */
+export const IntentClassification = z.object({
+  summary: z.string(),
   in_scope: z.array(z.string()),
   out_of_scope: z.array(z.string()),
+  risk_areas: z.array(z.string()),
+});
+export type IntentClassification = z.infer<typeof IntentClassification>;
+
+/** Derived PR intent: the classification plus deterministically-computed
+    confidence and the per-source fetch outcomes it was computed from. */
+export const Intent = IntentClassification.extend({
+  confidence: IntentConfidence,
+  sources: z.array(IntentSource),
 });
 export type Intent = z.infer<typeof Intent>;
 
@@ -78,7 +121,7 @@ export const PrHistory = z.object({
 export type PrHistory = z.infer<typeof PrHistory>;
 
 // ---- Smart Diff ----
-export const SmartDiffRole = z.enum(['core', 'wiring', 'boilerplate']);
+export const SmartDiffRole = z.enum(['core', 'tests', 'wiring', 'docs', 'boilerplate']);
 export type SmartDiffRole = z.infer<typeof SmartDiffRole>;
 
 export const SmartDiffFile = z.object({

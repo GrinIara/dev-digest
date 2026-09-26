@@ -2,21 +2,19 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
 import { Checkbox, Badge, Skeleton, ErrorState, Icon, TextInput } from "@devdigest/ui";
-import type { Agent, Skill } from "@devdigest/shared";
-import { api } from "../../../../../../../lib/api";
+import type { Agent } from "@devdigest/shared";
 import { useAgentSkills, useSetAgentSkills } from "../../../../../../../lib/hooks/agents";
+import { useSkills } from "../../../../../../../lib/hooks/skills";
 import { s } from "./styles";
 
 /**
  * Skills tab — every workspace skill, checkbox = bound to this agent, drag to
  * reorder (only bound/checked rows are draggable — an unchecked row can still
  * be a drop *target*, since reordering only matters for bound skills), plus a
- * name filter box. This is a deliberately tiny, colocated read of `GET
- * /skills` (not the shared `lib/hooks/skills.ts` file, which the Skills Lab
- * work owns concurrently) — a few duplicated lines here is the right tradeoff
- * for safe parallel work on that file.
+ * name filter box. The skill list comes from the shared `useSkills()`
+ * (`lib/hooks/skills.ts`, `["skills"]`), so skill create/update/delete
+ * refresh it here too.
  */
 export function SkillsTab({ agent }: { agent: Agent }) {
   const t = useTranslations("agents");
@@ -25,10 +23,7 @@ export function SkillsTab({ agent }: { agent: Agent }) {
     isLoading: skillsLoading,
     isError: skillsError,
     refetch: refetchSkills,
-  } = useQuery({
-    queryKey: ["skills-for-agent-editor"],
-    queryFn: () => api.get<Skill[]>("/skills"),
-  });
+  } = useSkills();
   const { data: links, isLoading: linksLoading } = useAgentSkills(agent.id);
   const setAgentSkills = useSetAgentSkills();
 

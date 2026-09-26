@@ -13,6 +13,7 @@ import { SkillsService } from './service.js';
  *   GET    /skills/:id              → one skill
  *   POST   /skills                  → create
  *   PATCH  /skills/:id              → partial update (versions on config change)
+ *   PUT    /skills/:id              → full replace (all fields required, versions on config change)
  *   DELETE /skills/:id              → delete (agent_skills/skill_versions cascade)
  *   GET    /skills/:id/versions     → body history (newest first)
  *   POST   /skills/import           → parse-only import preview (md or zip)
@@ -37,6 +38,17 @@ const UpdateSkillBody = z.object({
   enabled: z.boolean().optional(),
   evidence_files: z.array(z.string()).optional(),
   /** "Describe your change" input on Save; defaults to a generic string when omitted/blank. */
+  change_summary: z.string().optional(),
+});
+
+/** Full-replace body: every resource field is required; only `change_summary` (versioning metadata, not resource state) stays optional. */
+const ReplaceSkillBody = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  type: SkillType,
+  body: z.string().min(1),
+  enabled: z.boolean(),
+  evidence_files: z.array(z.string()),
   change_summary: z.string().optional(),
 });
 
@@ -81,6 +93,17 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
   app.patch(
     '/skills/:id',
     { schema: { params: IdParams, body: UpdateSkillBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const skill = await service.update(workspaceId, req.params.id, req.body);
+      if (!skill) throw new NotFoundError('Skill not found');
+      return skill;
+    },
+  );
+
+  app.put(
+    '/skills/:id',
+    { schema: { params: IdParams, body: ReplaceSkillBody } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       const skill = await service.update(workspaceId, req.params.id, req.body);

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision, index, check } from 'drizzle-orm/pg-core';
+import type { IntentSource } from '@devdigest/shared';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
@@ -69,14 +70,33 @@ export const findings = pgTable(
   }),
 );
 
-export const prIntent = pgTable('pr_intent', {
-  prId: uuid('pr_id')
-    .primaryKey()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  intent: text('intent').notNull(),
-  inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-  outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-});
+export const prIntent = pgTable(
+  'pr_intent',
+  {
+    prId: uuid('pr_id')
+      .primaryKey()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    // Stores the classification's `summary` field (contract renamed
+    // `intent` -> `summary`; the DB column name is unchanged to avoid a
+    // drizzle-kit interactive rename prompt on a table with no writers/data).
+    intent: text('intent').notNull(),
+    inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    riskAreas: jsonb('risk_areas').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    // Backed by the `IntentConfidence` Zod enum (high/low); DB-level backstop
+    // like `findings_severity_check`.
+    confidence: text('confidence').notNull().default('low'),
+    sources: jsonb('sources').$type<IntentSource[]>().notNull().default(sql`'[]'::jsonb`),
+    model: text('model'),
+    /** The PR head sha the intent was classified against; null until first
+        classified. Used to compute the `stale` flag. */
+    headSha: text('head_sha'),
+    classifiedAt: timestamp('classified_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    confidenceCheck: check('pr_intent_confidence_check', sql`${t.confidence} IN ('high', 'low')`),
+  }),
+);
 
 export const prBrief = pgTable('pr_brief', {
   prId: uuid('pr_id')

@@ -99,6 +99,13 @@
       "when": 1790066867334,
       "tag": "0013_conventions_status_category",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790202600530,
+      "tag": "0014_open_the_hunter",
+      "breakpoints": true
     }
   ]
 }

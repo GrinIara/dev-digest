@@ -7,6 +7,7 @@ import {
   Risks,
   PrHistory,
   SmartDiff,
+  SmartDiffRole,
   Conformance,
   Onboarding,
   EvalRun,
@@ -66,8 +67,18 @@ describe('AI contracts parse fixtures', () => {
   });
 
   it('Intent / BlastRadius / Risks / PrHistory', () => {
+    // Fixture updated for the intent-layer contract change: `intent` was
+    // renamed to `summary`, and `confidence`/`sources`/`risk_areas` are now
+    // required (test-writing for the new negative cases is a separate pass).
     expect(() =>
-      Intent.parse({ intent: 'x', in_scope: ['a'], out_of_scope: ['b'] }),
+      Intent.parse({
+        summary: 'x',
+        in_scope: ['a'],
+        out_of_scope: ['b'],
+        risk_areas: ['c'],
+        confidence: 'high',
+        sources: [{ kind: 'title', ref: null, status: 'used', detail: null }],
+      }),
     ).not.toThrow();
     expect(() =>
       BlastRadius.parse({
@@ -104,6 +115,18 @@ describe('AI contracts parse fixtures', () => {
     ).not.toThrow();
   });
 
+  it('Intent rejects a confidence outside the high|low enum', () => {
+    const result = Intent.safeParse({
+      summary: 'x',
+      in_scope: ['a'],
+      out_of_scope: ['b'],
+      risk_areas: ['c'],
+      confidence: 'medium',
+      sources: [{ kind: 'title', ref: null, status: 'used', detail: null }],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('SmartDiff (data.jsx DIFF)', () => {
     const d = SmartDiff.parse({
       groups: [
@@ -111,10 +134,24 @@ describe('AI contracts parse fixtures', () => {
           role: 'core',
           files: [{ path: 'a.ts', additions: 84, deletions: 0, finding_lines: [28, 52] }],
         },
+        {
+          role: 'tests',
+          files: [{ path: 'a.test.ts', additions: 12, deletions: 0, finding_lines: [] }],
+        },
+        {
+          role: 'docs',
+          files: [{ path: 'docs/a.md', additions: 3, deletions: 0, finding_lines: [] }],
+        },
       ],
       split_suggestion: { too_big: false, total_lines: 285, proposed_splits: [] },
     });
     expect(d.groups[0]!.role).toBe('core');
+    expect(d.groups[1]!.role).toBe('tests');
+    expect(d.groups[2]!.role).toBe('docs');
+  });
+
+  it('SmartDiffRole rejects unknown roles', () => {
+    expect(SmartDiffRole.safeParse('vendor').success).toBe(false);
   });
 
   it('Conformance / Onboarding / EvalRun / MemoryItem', () => {

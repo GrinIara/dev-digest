@@ -95,6 +95,38 @@ describe('wrapUntrusted — delimiter escape (finding #9)', () => {
   });
 });
 
+describe('assemblePrompt — ## Declared intent & scope (T4)', () => {
+  const intent = {
+    summary: 'Adds rate limiting to public endpoints.',
+    in_scope: ['rate limiting'],
+    out_of_scope: ['auth refactor'],
+    risk_areas: ['DoS'],
+    confidence: 'high' as const,
+  };
+
+  it('renders the intent section, untrusted-wrapped, when parts.intent is given', () => {
+    const { messages, assembly } = assemblePrompt({ system: 'sys', diff: 'DIFF', intent });
+    const user = messages[1]!.content;
+
+    expect(user).toContain('## Declared intent & scope');
+    expect(user).toContain('<untrusted source="intent">');
+    expect(user).toContain('Adds rate limiting to public endpoints.');
+    expect(user).toContain('rate limiting');
+    expect(user).toContain('auth refactor');
+    expect(assembly.intent).toContain('<untrusted source="intent">');
+  });
+
+  it('is byte-identical to the current no-intent output when intent is absent (regression/parity)', () => {
+    const withoutIntentField = assemblePrompt({ system: 'sys', diff: 'DIFF' });
+    const withUndefinedIntent = assemblePrompt({ system: 'sys', diff: 'DIFF', intent: undefined });
+
+    expect(withUndefinedIntent.messages).toEqual(withoutIntentField.messages);
+    expect(withUndefinedIntent.assembly).toEqual(withoutIntentField.assembly);
+    expect(withoutIntentField.assembly.intent ?? null).toBeNull();
+    expect(withoutIntentField.messages[1]!.content).not.toContain('## Declared intent & scope');
+  });
+});
+
 describe('assemblePrompt — ## Skills / rules is wrapped as untrusted (finding #8)', () => {
   it('wraps each skill body in <untrusted> like specs/repoMap/callers/diff', () => {
     const { messages } = assemblePrompt({

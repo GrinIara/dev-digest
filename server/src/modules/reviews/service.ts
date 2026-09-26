@@ -1,10 +1,13 @@
 import type { Container } from '../../platform/container.js';
-import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
-import { AppError, NotFoundError } from '../../platform/errors.js';
+import type { FindingActionKind, PrIntentResponse, RunEventKind, RunTrace } from '@devdigest/shared';
+import { AppError, ExternalServiceError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
 import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
+import { IntentClassifier } from './intent-classifier.js';
+import { redactDetail } from './intent-links.js';
+import { loadDiff } from './diff-loader.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
 
@@ -29,11 +32,13 @@ export class ReviewService {
   private repo: ReviewRepository;
   private agents: Container['agentsRepo'];
   private executor: ReviewRunExecutor;
+  private intent: IntentClassifier;
 
   constructor(private container: Container) {
     this.repo = new ReviewRepository(container.db);
     this.agents = container.agentsRepo;
     this.executor = new ReviewRunExecutor(container, this.repo, this.agents);
+    this.intent = new IntentClassifier(container, this.repo);
   }
 
   // ===========================================================================
@@ -175,5 +180,56 @@ export class ReviewService {
 
   async getRunTrace(workspaceId: string, runId: string): Promise<RunTrace | undefined> {
     return this.repo.getRunTrace(workspaceId, runId);
+  }
+
+  // ===========================================================================
+  // Intent (T6, intent layer)
+  // ===========================================================================
+
+  /** GET /pulls/:id/intent — the persisted intent (or null) plus a `stale`
+   *  flag when the PR's head has moved since it was classified against. */
+  async getIntent(workspaceId: string, prId: string): Promise<PrIntentResponse> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+    const record = await this.repo.getIntent(prId);
+    const stale = record != null && record.head_sha !== null && record.head_sha !== pull.headSha;
+    return { intent: record ?? null, stale };
+  }
+
+  /**
+   * POST /pulls/:id/intent/classify — manual re-classify (A3: intent is
+   * otherwise reused across runs until the user re-triggers it). Synchronous,
+   * no run — errors propagate: a `ConfigError` (missing key) surfaces as its
+   * own 500 same as the review path; any other failure (LLM call, timeout) is
+   * wrapped as a redacted `ExternalServiceError` (502).
+   */
+  async reclassifyIntent(
+    workspaceId: string,
+    prId: string,
+    logger?: Logger,
+  ): Promise<PrIntentResponse> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+    const repo = await this.repo.getRepo(pull.repoId);
+    if (!repo) throw new NotFoundError('Repo not found');
+
+    const diff = await loadDiff(this.container, this.repo, workspaceId, pull, repo);
+    try {
+      const { record, call } = await this.intent.classify(workspaceId, pull, repo, diff);
+      logger?.info(
+        {
+          prId,
+          model: record.model,
+          approxTokens: call.approx_prompt_tokens,
+          sources: record.sources.map((s) => ({ kind: s.kind, status: s.status })),
+          confidence: record.confidence,
+        },
+        'intent: re-classified',
+      );
+      return { intent: record, stale: false };
+    } catch (err) {
+      if (err instanceof AppError) throw err; // e.g. ConfigError — propagate its own status
+      throw new ExternalServiceError(`Intent classification failed: ${redactDetail(err)}`);
+    }
   }
 }

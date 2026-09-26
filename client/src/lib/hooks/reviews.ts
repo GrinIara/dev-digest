@@ -8,11 +8,13 @@ import { api, API_BASE } from "../api";
 import { notify } from "../toast";
 import type {
   FindingActionKind,
+  PrIntentResponse,
   PrReviewComment,
   ReviewRecord,
   ReviewRunResponse,
   RunEvent,
   RunSummary,
+  SmartDiffResponse,
 } from "@devdigest/shared";
 
 // ---- Active (in-flight) runs — server-side source of truth ----
@@ -56,6 +58,41 @@ export function usePrReviews(prId: string | null | undefined) {
   });
 }
 
+// ---- Derived PR intent (Intent Layer) ----
+/** The persisted intent for a PR (or null if never classified) + a `stale`
+   flag when the PR's head has moved since classification. */
+export function usePrIntent(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["pr-intent", prId],
+    queryFn: () => api.get<PrIntentResponse>(`/pulls/${prId}/intent`),
+    enabled: !!prId,
+  });
+}
+
+// ---- Smart Diff (role-grouped diff with in-line review findings) ----
+/** The server-computed role grouping + finding lines for a PR's Files
+   changed tab. Cached and invalidated alongside `["reviews", prId]` (§0.1). */
+export function useSmartDiff(prId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["smart-diff", prId],
+    queryFn: () => api.get<SmartDiffResponse>(`/pulls/${prId}/smart-diff`),
+    enabled: !!prId,
+  });
+}
+
+/** Manually (re-)classify a PR's intent; overwrites the cached record so the
+   Intent card reflects the fresh result without a refetch. */
+export function useReclassifyIntent(prId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<PrIntentResponse>(`/pulls/${prId}/intent/classify`),
+    onSuccess: (data) => {
+      qc.setQueryData(["pr-intent", prId], data);
+    },
+    onError: (e: Error) => notify.error(e.message || "Failed to classify intent"),
+  });
+}
+
 /** Delete one run from the PR's run history (+ its trace). */
 export function useDeleteRun(prId: string | null | undefined) {
   const qc = useQueryClient();
@@ -66,6 +103,7 @@ export function useDeleteRun(prId: string | null | undefined) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
     },
   });
 }
@@ -82,7 +120,10 @@ export function useDeleteReview(prId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (reviewId: string) => api.del<{ ok: boolean }>(`/reviews/${reviewId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["reviews", prId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
+    },
   });
 }
 
@@ -131,6 +172,7 @@ export function useRunReview() {
       }),
     onSuccess: (_d, { prId }) => {
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
     },
   });
 }
@@ -155,7 +197,10 @@ export function useFindingAction() {
         reply ? { reply } : undefined,
       ),
     onSuccess: (_d, { prId }) => {
-      if (prId) qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      if (prId) {
+        qc.invalidateQueries({ queryKey: ["reviews", prId] });
+        qc.invalidateQueries({ queryKey: ["smart-diff", prId] });
+      }
     },
   });
 }

@@ -8,7 +8,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Tabs, Markdown } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
-import { EvalsPanel } from "@/components/evals-panel/EvalsPanel";
+import { EvalsPanel } from "./_components/EvalsPanel";
 import { ConfigTab } from "./_components/ConfigTab";
 import { VersionsTab } from "./_components/VersionsTab";
 import { StatsTab } from "./_components/StatsTab";

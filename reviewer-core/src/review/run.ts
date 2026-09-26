@@ -4,11 +4,14 @@ import type {
   PromptAssembly,
   Review,
   RunEventKind,
+  ScopedReview,
+  ScopeFilterSummary,
   UnifiedDiff,
 } from '@devdigest/shared';
-import { Review as ReviewSchema } from '@devdigest/shared';
-import { assemblePrompt } from '../prompt.js';
+import { Review as ReviewSchema, ScopedReview as ScopedReviewSchema } from '@devdigest/shared';
+import { assemblePrompt, type IntentPromptSlot } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
+import { applyScopeFilter } from '../scope.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 
 /**
@@ -72,6 +75,14 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /**
+   * Derived PR intent (T4, intent layer). When present, findings are
+   * requested with the `ScopedReview` structured-output schema (each finding
+   * carries a `scope` tag) and the post-grounding out-of-scope filter runs
+   * (only actually dropping anything when `intent.confidence === 'high'`).
+   * Absent → schema/prompt/behavior stay byte-identical to today's (R3).
+   */
+  intent?: IntentPromptSlot;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -122,6 +133,12 @@ export interface ReviewOutcome {
   costUsd: number | null;
   /** Joined raw model outputs (for the run trace). */
   raw: string;
+  /** Out-of-scope filter summary (T4); null when there's no intent (the
+   *  filter never ran, e.g. the CI runner or no stored intent). */
+  scope: ScopeFilterSummary | null;
+  /** Findings dropped by the out-of-scope filter, with reasons (mirrors
+   *  `dropped` for grounding — never silent). */
+  scopeDropped: { finding: Finding; reason: string }[];
 }
 
 function selectMode(strategy: ReviewStrategy, diff: UnifiedDiff, threshold: number): ReviewMode {
@@ -147,8 +164,15 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
+    intent: input.intent,
     task: input.task,
   };
+
+  // When an intent is present, request the `ScopedReview` schema so findings
+  // carry a `scope` tag; without intent, the schema/prompt stay byte-identical
+  // to today's (R3).
+  const hasIntent = input.intent != null;
+  const schemaName = hasIntent ? 'ScopedReview' : 'Review';
 
   const chunks =
     mode === 'map-reduce'
@@ -194,14 +218,28 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     );
     const a = assemblePrompt({ ...promptParts, diff: chunk.diffText });
     chunkAssemblies.push(a.assembly);
-    const res = await input.llm.completeStructured<Review>({
-      model: input.model,
-      schema: ReviewSchema,
-      schemaName: 'Review',
-      messages: a.messages,
-      maxRetries,
-      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-    });
+    // Requesting `ScopedReview` (findings carry a `scope` tag) when an intent
+    // is present, else the unchanged `Review` schema (R3: byte-identical
+    // schema/prompt without intent). `ScopedReview`'s findings structurally
+    // satisfy `Finding` (the extra `scope` field is nullish/optional), so
+    // pushing into `partials: Review[]` below is safe either way.
+    const res = hasIntent
+      ? await input.llm.completeStructured<ScopedReview>({
+          model: input.model,
+          schema: ScopedReviewSchema,
+          schemaName,
+          messages: a.messages,
+          maxRetries,
+          ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        })
+      : await input.llm.completeStructured<Review>({
+          model: input.model,
+          schema: ReviewSchema,
+          schemaName,
+          messages: a.messages,
+          maxRetries,
+          ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        });
     tokensIn += res.tokensIn;
     tokensOut += res.tokensOut;
     costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;
@@ -224,11 +262,31 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit('result', `Citation grounding: ${grounding}`);
 
-  // Score is derived from the findings that SURVIVED grounding (not the model's
-  // self-reported number, and not the pre-grounding set) so the score, the
-  // findings list, and the deterministic event always agree.
+  // Out-of-scope filter (T4) — runs AFTER grounding, drops nothing unless the
+  // intent's confidence is 'high' (a weak intent must never suppress findings).
+  const scopeResult = applyScopeFilter(ground.kept, {
+    enabled: input.intent?.confidence === 'high',
+  });
+  for (const d of scopeResult.dropped) {
+    emit(
+      'info',
+      `scope filter dropped "${d.finding.title}" (out of scope, ${d.finding.severity})`,
+    );
+  }
+  emit(
+    'result',
+    `Scope filter: applied=${scopeResult.summary.applied}, kept ${scopeResult.summary.kept_out_of_scope} out-of-scope serious, dropped ${scopeResult.summary.dropped_out_of_scope}`,
+  );
+
+  // Score is derived from the findings that SURVIVED grounding AND the scope
+  // filter (not the model's self-reported number, and not the pre-filter set)
+  // so the score, the findings list, and the deterministic events always agree.
   return {
-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+    review: {
+      ...merged,
+      findings: scopeResult.kept,
+      score: scoreFromFindings(scopeResult.kept),
+    },
     grounding,
     dropped: ground.dropped,
     mode,
@@ -242,5 +300,9 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     tokensOut,
     costUsd,
     raw: raws.join('\n---\n'),
+    // null when there's no intent — the CI runner and no-intent callers never
+    // ran the filter, so the trace should omit it cleanly (R7).
+    scope: hasIntent ? scopeResult.summary : null,
+    scopeDropped: scopeResult.dropped,
   };
 }

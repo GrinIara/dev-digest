@@ -40,13 +40,15 @@
       "duration": "DURATION",
       "tokens": "TOKENS",
       "cost": "COST",
-      "findings": "FINDINGS"
+      "findings": "FINDINGS",
+      "scopeFilter": "SCOPE FILTER"
     },
     "prompt": {
       "system": "System",
       "skills": "Skills (dynamic)",
       "memory": "Memory (dynamic)",
       "repoMap": "Repo skeleton — repo-intel (dynamic)",
+      "intent": "Declared intent & scope (dynamic)",
       "specs": "Project context (dynamic)",
       "callers": "Callers of changed symbols — repo-intel (dynamic)",
       "user": "User / diff (dynamic)",
@@ -60,6 +62,20 @@
       "args": "args",
       "result": "result",
       "previewTruncated": "(preview truncated)"
+    },
+    "intentCall": {
+      "title": "Intent classifier call",
+      "status": "Status",
+      "model": "Model",
+      "duration": "Duration",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "approxPromptTokens": "Approx. prompt tokens",
+      "confidence": "Confidence",
+      "error": "Error",
+      "promptComponents": "Prompt components",
+      "sources": "Sources",
+      "scopeFilterSummary": "applied={applied} · kept {kept} out-of-scope · dropped {dropped}"
     }
   },
   "drawer": {

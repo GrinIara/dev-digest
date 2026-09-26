@@ -125,6 +125,13 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /**
+   * Per-issue-number fixtures for `getIssue` (T5, intent layer): a value
+   * returns that fixture, `'error'` makes `getIssue` throw (simulating a
+   * 404/unreachable issue, e.g. a stale/cross-repo/deleted link) so callers
+   * can test the `unreachable` source-status path distinctly from "no link".
+   */
+  issues?: Record<number, IssueMeta | 'error'>;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -231,6 +238,9 @@ export class MockGitHubClient implements GitHubClient {
   }
 
   async getIssue(_repo: RepoRef, n: number): Promise<IssueMeta> {
+    const fixture = this.opts.issues?.[n];
+    if (fixture === 'error') throw new Error('HTTP 404');
+    if (fixture) return fixture;
     return { number: n, title: `Issue #${n}`, body: 'mock issue', state: 'open' };
   }
 

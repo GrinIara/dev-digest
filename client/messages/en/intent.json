@@ -1,0 +1,20 @@
+{
+  "title": "Intent",
+  "confidence": {
+    "high": "High confidence",
+    "low": "Low confidence"
+  },
+  "stale": "PR updated since classification",
+  "reclassify": "Re-classify",
+  "classifyNow": "Classify now",
+  "notDerivedYet": "Intent not derived yet",
+  "notDerivedBody": "Derive this PR's intent and scope from its title, description and linked context before reviewing.",
+  "inScope": "In scope",
+  "outOfScope": "Out of scope",
+  "riskAreas": "Risk areas",
+  "noItems": "none",
+  "missingContext": "Missing context: {refs} could not be fetched — intent may be incomplete.",
+  "noDescription": "No PR description — derived from title and file names only.",
+  "errorTitle": "Couldn’t load intent",
+  "errorBody": "The engine returned an error."
+}

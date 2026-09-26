@@ -15,9 +15,32 @@
 export {
   assemblePrompt,
   wrapUntrusted,
+  INJECTION_GUARD,
   type PromptParts,
   type AssembledPrompt,
+  type IntentPromptSlot,
 } from './prompt.js';
+
+// Out-of-scope filter (T4) — post-grounding, conservative "serious findings
+// are never dropped" filter driven by the declared intent's scope.
+export {
+  applyScopeFilter,
+  isSeriousFinding,
+  type ScopeFilterResult,
+} from './scope.js';
+
+// Intent classifier — cheap, separate LLM call deriving a PR's intent/scope.
+export {
+  classifyIntent,
+  assembleIntentPrompt,
+  deriveConfidence,
+  buildIntentSources,
+  type IntentFileHeader,
+  type LinkedContext,
+  type IntentClassifierInput,
+  type IntentPromptResult,
+  type IntentClassifierOutcome,
+} from './intent.js';
 
 // Citation grounding — the mandatory mechanical gate for diff findings.
 export { groundFindings, groundingSummary, type GroundingResult } from './grounding.js';
