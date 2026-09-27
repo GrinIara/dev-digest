@@ -10,9 +10,12 @@ import { Badge, Button, Card, ErrorState, SectionLabel, Skeleton } from "@devdig
 import { usePrBlast } from "@/lib/hooks/blast";
 import { BlastSummary } from "./_components/BlastSummary";
 import { BlastSymbolRow } from "./_components/BlastSymbolRow";
+import { BlastGraph } from "./_components/BlastGraph";
 import { useBlastResync } from "./hooks/useBlastResync";
 import { callerHref, kindOf } from "./helpers";
 import { s } from "./styles";
+
+type BlastView = "tree" | "graph";
 
 interface BlastRadiusCardProps {
   prId: string;
@@ -31,6 +34,8 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
   // (loading) render for a `useState` lazy initializer to capture. Once the
   // user toggles anything, `openSymbols` becomes the source of truth.
   const [openSymbols, setOpenSymbols] = React.useState<Set<string> | null>(null);
+  // Tree | Graph toggle (R13): local UI state, default Tree.
+  const [view, setView] = React.useState<BlastView>("tree");
 
   if (isLoading) {
     return (
@@ -77,13 +82,37 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
         {t("title")}
       </SectionLabel>
 
-      <BlastSummary counts={data.counts} />
+      <BlastSummary
+        counts={data.counts}
+        right={
+          <div style={s.viewToggle}>
+            <button
+              type="button"
+              aria-pressed={view === "tree"}
+              onClick={() => setView("tree")}
+              style={s.viewToggleButton(view === "tree")}
+            >
+              {t("view.tree")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "graph"}
+              onClick={() => setView("graph")}
+              style={s.viewToggleButton(view === "graph")}
+            >
+              {t("view.graph")}
+            </button>
+          </div>
+        }
+      />
 
       {data.callers_truncated && (
         <div style={s.truncatedNote}>{t("truncated", { max: data.limits.max_callers_per_symbol })}</div>
       )}
 
-      {data.downstream.length === 0 ? (
+      {view === "graph" ? (
+        <BlastGraph data={data} />
+      ) : data.downstream.length === 0 ? (
         <div style={s.emptyText}>{t("noDownstream", { count: data.counts.symbols })}</div>
       ) : (
         <div style={s.symbolList}>

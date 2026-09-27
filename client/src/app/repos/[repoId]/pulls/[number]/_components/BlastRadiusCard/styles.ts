@@ -23,4 +23,25 @@ export const s = {
     gap: 16,
     marginTop: 14,
   } satisfies CSSProperties,
+  /** Tree | Graph segmented control (R13, T9): a dark pill container with a
+   *  subtle border; the active segment gets a lighter filled background and
+   *  bold text, the inactive one stays muted. */
+  viewToggle: {
+    display: "flex",
+    gap: 2,
+    padding: 2,
+    borderRadius: 999,
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border)",
+  } satisfies CSSProperties,
+  viewToggleButton: (active: boolean): CSSProperties => ({
+    padding: "4px 12px",
+    borderRadius: 999,
+    border: "none",
+    background: active ? "var(--bg-hover)" : "transparent",
+    color: active ? "var(--text-primary)" : "var(--text-muted)",
+    fontWeight: active ? 700 : 500,
+    fontSize: 12,
+    cursor: "pointer",
+  }),
 } as const;

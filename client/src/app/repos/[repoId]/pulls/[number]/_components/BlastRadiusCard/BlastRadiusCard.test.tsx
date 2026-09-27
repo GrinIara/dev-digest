@@ -39,7 +39,17 @@ const HAPPY: BlastRadiusResponse = {
   indexed_sha: "abc123",
   callers_truncated: false,
   limits: { max_callers_per_symbol: 20, bfs_depth: 2 },
-  facts_by_file: {},
+  // One caller file per endpoint, so buildGraphLayout's caller→endpoint
+  // edges (T9) are deterministic: publicRouter/adminRouter/userRouter each
+  // declare one endpoint; webhookHandler/resetJob declare none (resetJob's
+  // file is only linked to the cron, which the graph doesn't show).
+  facts_by_file: {
+    "src/api/public/index.ts": { endpoints: ["GET /api/public/items"], crons: [] },
+    "src/api/webhooks.ts": { endpoints: [], crons: [] },
+    "src/jobs/reset.ts": { endpoints: [], crons: ["job:reset-rate-buckets"] },
+    "src/api/admin/index.ts": { endpoints: ["GET /api/admin/x"], crons: [] },
+    "src/api/admin/users.ts": { endpoints: ["POST /api/admin/y"], crons: [] },
+  },
 };
 
 const refetch = vi.fn();
@@ -63,6 +73,7 @@ vi.mock("@/lib/hooks/repo-intel", () => ({
 }));
 
 import { BlastRadiusCard } from "./BlastRadiusCard";
+import { buildGraphLayout } from "./helpers";
 
 afterEach(() => {
   cleanup();
@@ -211,5 +222,58 @@ describe("BlastRadiusCard", () => {
     expect(screen.getByText("Couldn't load blast radius")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("buildGraphLayout: 2 symbol + 5 caller + 3 endpoint nodes, and 3 caller→endpoint edges (R13)", () => {
+    const layout = buildGraphLayout(HAPPY, 640);
+
+    expect(layout.nodes.filter((n) => n.column === 0)).toHaveLength(2);
+    expect(layout.nodes.filter((n) => n.column === 1)).toHaveLength(5);
+    expect(layout.nodes.filter((n) => n.column === 2)).toHaveLength(3);
+
+    const callerToEndpointEdges = layout.edges.filter((e) => e.to.startsWith("endpoint:"));
+    expect(callerToEndpointEdges).toHaveLength(3);
+    const symbolToCallerEdges = layout.edges.filter((e) => e.from.startsWith("symbol:"));
+    expect(symbolToCallerEdges).toHaveLength(5);
+  });
+
+  it("view toggle: switches to the Graph view and back to Tree (R13)", () => {
+    renderCard();
+
+    // Default is Tree.
+    expect(screen.getByRole("button", { name: "tree" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "graph" })).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(screen.getByRole("button", { name: "graph" }));
+
+    expect(screen.getByRole("img", { name: "Blast radius graph" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Open src\/api\/public\/index\.ts line 23 on GitHub/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("changed symbol")).toBeInTheDocument();
+    expect(screen.getByText("callers")).toBeInTheDocument();
+    expect(screen.getByText("endpoints affected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "tree" }));
+
+    expect(screen.queryByRole("img", { name: "Blast radius graph" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Open src\/api\/public\/index\.ts line 23 on GitHub/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("graph view: shows the empty-graph text when there is no downstream data (R13, R8)", () => {
+    blastState = {
+      data: { ...HAPPY, downstream: [], counts: { symbols: 2, callers: 0, endpoints: 0, crons: 0 } },
+      isLoading: false,
+      isError: false,
+      refetch,
+    };
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "graph" }));
+
+    expect(screen.getByText("No downstream callers to graph.")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Blast radius graph" })).not.toBeInTheDocument();
   });
 });
