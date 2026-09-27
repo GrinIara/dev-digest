@@ -84,7 +84,11 @@ export function groupDownstream(result: BlastResult): DownstreamImpact[] {
     return { impact, maxRank, count: sortedCallers.length };
   });
 
+  // Symbols that reach an HTTP endpoint come first (that's the impact a
+  // reviewer cares about most), then rank/count/name as before.
+  const hasEndpoints = (g: (typeof groups)[number]) => (g.impact.endpoints_affected.length > 0 ? 1 : 0);
   groups.sort((a, b) => {
+    if (hasEndpoints(b) !== hasEndpoints(a)) return hasEndpoints(b) - hasEndpoints(a);
     if (b.maxRank !== a.maxRank) return b.maxRank - a.maxRank;
     if (b.count !== a.count) return b.count - a.count;
     return a.impact.symbol < b.impact.symbol ? -1 : a.impact.symbol > b.impact.symbol ? 1 : 0;

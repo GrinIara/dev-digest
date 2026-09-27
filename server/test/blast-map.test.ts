@@ -25,7 +25,7 @@ function baseIndexState(overrides: Partial<IndexState> = {}): IndexState {
 }
 
 describe('blast/helpers — groupDownstream', () => {
-  it('groups six flat callers across two viaSymbols, dedupes/sorts endpoints+crons, orders groups by max rank', () => {
+  it('groups six flat callers across two viaSymbols, dedupes/sorts endpoints+crons, orders endpoint-reaching groups first', () => {
     const result: BlastResult = {
       changedSymbols: [
         { file: 'src/lib/rate.ts', name: 'rateLimit', kind: 'function' },
@@ -50,10 +50,11 @@ describe('blast/helpers — groupDownstream', () => {
 
     const downstream = groupDownstream(result);
 
-    // resetBuckets has max rank 90 (adminRouter) > rateLimit's max rank 80.
-    expect(downstream.map((d) => d.symbol)).toEqual(['resetBuckets', 'rateLimit']);
+    // rateLimit reaches endpoints, resetBuckets only a cron — endpoints win
+    // over resetBuckets' higher max rank (90 vs 80).
+    expect(downstream.map((d) => d.symbol)).toEqual(['rateLimit', 'resetBuckets']);
 
-    const resetGroup = downstream[0]!;
+    const resetGroup = downstream[1]!;
     // rank desc, then file asc, then line asc: admin/index.ts (90) first,
     // then jobs/reset.ts's two callers ordered by line (5 before 15).
     expect(resetGroup.callers).toEqual([
@@ -65,7 +66,7 @@ describe('blast/helpers — groupDownstream', () => {
     expect(resetGroup.endpoints_affected).toEqual([]);
     expect(resetGroup.crons_affected).toEqual(['job:reset-rate-buckets']);
 
-    const rateGroup = downstream[1]!;
+    const rateGroup = downstream[0]!;
     // Both public/index.ts callers share rank 80: tie-broken by file (equal),
     // then line asc (5 before 23); webhookHandler (rank 50) comes last.
     expect(rateGroup.callers).toEqual([
@@ -120,6 +121,23 @@ describe('blast/helpers — groupDownstream', () => {
     const downstream = groupDownstream(result);
     expect(downstream[0]!.endpoints_affected).toEqual([]);
     expect(downstream[0]!.crons_affected).toEqual([]);
+  });
+
+  it('puts symbols that reach an endpoint before higher-ranked symbols that reach none', () => {
+    const result: BlastResult = {
+      changedSymbols: [
+        { file: 'src/lib/a.ts', name: 'noEndpoint', kind: 'function' },
+        { file: 'src/lib/a.ts', name: 'withEndpoint', kind: 'function' },
+      ],
+      callers: [
+        { file: 'src/ui/widget.ts', symbol: 'Widget', viaSymbol: 'noEndpoint', line: 3, rank: 99 },
+        { file: 'src/api/items.ts', symbol: 'itemsRoute', viaSymbol: 'withEndpoint', line: 7, rank: 10 },
+      ],
+      impactedEndpoints: [],
+      factsByFile: { 'src/api/items.ts': { endpoints: ['GET /items'], crons: [] } },
+      degraded: false,
+    };
+    expect(groupDownstream(result).map((d) => d.symbol)).toEqual(['withEndpoint', 'noEndpoint']);
   });
 });
 
