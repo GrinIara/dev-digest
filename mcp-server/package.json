@@ -6,6 +6,7 @@
   "description": "Local stdio MCP server exposing DevDigest's reviewer agents, PR review runs, findings, conventions and a blast-radius stub as MCP tools. Consumes the running server/ HTTP API; no direct DB/GitHub/LLM access.",
   "scripts": {
     "start": "tsx src/index.ts",
+    "inspect": "npx @modelcontextprotocol/inspector bin/start.sh",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint ."

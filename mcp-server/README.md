@@ -56,10 +56,27 @@ Registers the server locally (this machine + this repo checkout only, not
 committed) so every future `claude` session in this repo offers it:
 
 ```sh
-claude mcp add --scope local --transport stdio \
+claude mcp add devdigest --scope local --transport stdio \
   --env DEVDIGEST_API_URL=http://localhost:3001 \
-  devdigest -- <absolute-path-to-repo>/mcp-server/bin/start.sh
+  -- <absolute-path-to-repo>/mcp-server/bin/start.sh
 ```
+
+Keep the server name (`devdigest`) **before** the flags. `--env` is variadic —
+it consumes every following bare argument — so putting the name after it
+swallows the name as a second env value and fails with
+`error: missing required argument 'commandOrUrl'`. The `--` ends `--env`'s
+list and marks the start of the launch command.
+
+Check it registered (and, with the API up, connected):
+
+```sh
+claude mcp list   # expect: devdigest: <path>/bin/start.sh - ✔ Connected
+```
+
+Registrations live in Claude Code's config directory, so they are only
+visible to a `claude` started with the same `CLAUDE_CONFIG_DIR`. If you run
+Claude Code through an alias that sets it (e.g. a separate profile), run
+`mcp add` / `mcp list` / `mcp remove` through that same alias.
 
 Use an **absolute path** to `bin/start.sh` here — unlike route 1, this
 registration isn't anchored to the repo root, so a relative path would break
@@ -79,8 +96,18 @@ claude mcp remove devdigest --scope local
 the server directly, useful for poking at tools without an LLM in the loop:
 
 ```sh
+cd mcp-server && npm run inspect   # or: pnpm inspect
+# equivalent, from the repo root:
 npx @modelcontextprotocol/inspector mcp-server/bin/start.sh
 ```
+
+Same prerequisites as above (API running, `npm install` done). The Inspector
+opens `http://localhost:6274` — click **Connect** (transport `STDIO`, command
+pre-filled), then **Tools → List Tools**. Start with `list_agents`: it's free
+and read-only. Every **Execute Tool** on `run_agent_on_pr` starts a new paid
+run; to re-read a finished one, call `get_findings` with its `run_id`.
+To pass a non-default API URL:
+`npx @modelcontextprotocol/inspector -e DEVDIGEST_API_URL=http://localhost:3001 bin/start.sh`.
 
 ### Checking it's attached
 
@@ -185,7 +212,9 @@ running API, no Docker, no network.
 | A tool call returns "DevDigest API is not reachable at …" | The API isn't running, or is on a different port | `./scripts/dev.sh --no-client` (or the full `./scripts/dev.sh`); confirm the port matches `DEVDIGEST_API_URL` |
 | "DevDigest database is not seeded" | Migrations/seed haven't run | `cd server && pnpm db:migrate && pnpm db:seed` |
 | `devdigest` doesn't show up in `/mcp` | Config wasn't attached this session | Re-run with `claude --mcp-config mcp-server/mcp.json` from the repo root, or check `claude mcp list` for a `--scope local` registration |
-| `run: cd mcp-server && npm install` on stderr, server exits | `mcp-server/node_modules` is missing | `cd mcp-server && npm install` |
+| `claude mcp add` fails with `missing required argument 'commandOrUrl'` | The server name came after the variadic `--env`, which swallowed it | Put `devdigest` right after `mcp add` (see route 2) |
+| `mcp add` succeeded but `claude mcp list` doesn't show `devdigest` | Registered under a different `CLAUDE_CONFIG_DIR` (e.g. a profile alias) than the one you're listing with | Run `mcp add`/`mcp list` through the same `claude` alias/profile you start sessions with |
+| `Run: cd mcp-server && npm install` on stderr, server exits | `mcp-server/node_modules` is missing | `cd mcp-server && npm install` |
 | `Invalid DevDigest MCP server configuration — DEVDIGEST_API_URL: …` | `DEVDIGEST_API_URL` isn't a loopback `http`/`https` URL | Point it at `localhost`/`127.0.0.1`/`::1` — this server refuses non-loopback hosts by design (R12) |
 | Claude Code kills a `run_agent_on_pr` call before it can reply | `mcp.json`'s `"timeout"` was lowered below `DEVDIGEST_RUN_WAIT_MS` | Keep `mcp.json`'s `"timeout"` comfortably above `DEVDIGEST_RUN_WAIT_MS` (default 300,000ms vs ≤280,000ms) |
 | A registered server via route 2 doesn't pick up an `.env` change | `claude mcp add --env` values are captured at registration time | `claude mcp remove devdigest --scope local` then re-add with the new value, or use route 1 which re-reads `mcp.json`'s `env` each session |

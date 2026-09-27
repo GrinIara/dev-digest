@@ -15,6 +15,7 @@ emits JS: run as TypeScript source via `tsx`, consistent with
 - `npm test` — vitest, fully hermetic (fake `fetch`, zero-delay `sleep`, no real API/network)
 - `npm run lint`
 - `npm run start` (or `bin/start.sh`) — runs the stdio server; not started by `./scripts/dev.sh` (opt-in, see `README.md`)
+- `npm run inspect` — opens MCP Inspector against `bin/start.sh` (needs the API running)
 
 ## Map
 - `src/config.ts` — `loadConfig()`, loopback-only `DEVDIGEST_API_URL` enforcement, clamped wait/poll/HTTP timeouts
