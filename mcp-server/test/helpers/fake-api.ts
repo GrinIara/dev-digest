@@ -235,11 +235,13 @@ export const FIXTURE_BLAST = {
   degraded: false,
   reason: null,
   indexed_sha: 'abc123',
+  indexed_branch: 'main',
   callers_truncated: false,
   limits: { max_callers_per_symbol: 20, bfs_depth: 2 },
   facts_by_file: {
     'src/api/public/index.ts': { endpoints: ['GET /api/public/items'], crons: ['job:reset-rate-buckets'] },
   },
+  files: { changed: 1, indexed: 1 },
 };
 
 export const FIXTURE_BLAST_DEGRADED = {
@@ -251,9 +253,11 @@ export const FIXTURE_BLAST_DEGRADED = {
   degraded: true,
   reason: 'no_data',
   indexed_sha: null,
+  indexed_branch: null,
   callers_truncated: false,
   limits: { max_callers_per_symbol: 20, bfs_depth: 2 },
   facts_by_file: {},
+  files: { changed: 0, indexed: 0 },
 };
 
 export const FIXTURE_CONVENTIONS = [

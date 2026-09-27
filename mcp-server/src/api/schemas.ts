@@ -190,12 +190,22 @@ export const BlastLite = z.object({
   degraded: z.boolean(),
   reason: z.enum(['flag_off', 'index_failed', 'index_partial', 'repo_too_large', 'no_data']).nullable(),
   callers_truncated: z.boolean(),
+  files: z.object({ changed: z.number().int(), indexed: z.number().int() }),
+  indexed_branch: z.string().nullable(),
 });
 export type BlastLite = z.infer<typeof BlastLite>;
 type _BlastLiteDrift = AssertAssignable<
   Pick<
     BlastRadiusResponse,
-    'changed_symbols' | 'downstream' | 'summary' | 'counts' | 'degraded' | 'reason' | 'callers_truncated'
+    | 'changed_symbols'
+    | 'downstream'
+    | 'summary'
+    | 'counts'
+    | 'degraded'
+    | 'reason'
+    | 'callers_truncated'
+    | 'files'
+    | 'indexed_branch'
   >,
   BlastLite
 >;

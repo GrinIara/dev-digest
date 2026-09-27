@@ -30,6 +30,21 @@ export const s = {
     color: "var(--text-secondary)",
     marginTop: 8,
   } satisfies CSSProperties,
+  /** Muted "these changed files aren't in the index yet" hint (files.indexed
+   *  < files.changed, not degraded) — sits above the tree/empty text, per the
+   *  PR #218 bug fix: an unindexed-file gap must never read as "no impact". */
+  notIndexedNote: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 6,
+    fontSize: 12,
+    color: "var(--text-muted)",
+    marginTop: 8,
+  } satisfies CSSProperties,
+  notIndexedIcon: {
+    flexShrink: 0,
+    marginTop: 1,
+  } satisfies CSSProperties,
   symbolList: {
     display: "flex",
     flexDirection: "column",

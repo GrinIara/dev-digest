@@ -110,6 +110,12 @@ export interface BlastLite {
   degraded: boolean;
   reason: BlastDegradedReason | null;
   callers_truncated: boolean;
+  /** How many of the PR's changed files the persistent index knows about. */
+  files: { changed: number; indexed: number };
+  /** The branch the index was built from (`repos.default_branch`), or `null`
+   *  when unknown. Names, for the model, which branch a "not indexed yet"
+   *  result is relative to. */
+  indexed_branch: string | null;
 }
 
 export interface ConventionLite {

@@ -25,6 +25,12 @@
     }
   },
   "truncated": "Showing the top {max} callers",
+  "notIndexed": {
+    "none": "None of this PR's changed files are in the repo index yet. The index is built from {branch} ({sha}), so files added or moved in this PR aren't known to it until they're merged.",
+    "noneNoBranch": "None of this PR's changed files are in the repo index yet — they're new or the index is older than the PR. Callers can't be resolved for them.",
+    "some": "{missing} of {total} changed files aren't in the repo index (built from {branch} ({sha})) — new or moved in this PR.",
+    "someNoBranch": "{missing} of {total} changed files aren't in the repo index yet (new files or index older than the PR)."
+  },
   "callerLinkLabel": "Open {file} line {line} on GitHub",
   "resync": "Resync",
   "resyncing": "Resyncing…",

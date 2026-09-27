@@ -30,8 +30,10 @@ function buildService(opts: {
   repoIntelEnabled: boolean;
   pullMissing?: boolean;
   files?: string[];
+  defaultBranch?: string | null;
   indexState?: IndexState;
   getBlastRadius?: ReturnType<typeof vi.fn>;
+  countIndexedFiles?: ReturnType<typeof vi.fn>;
 }) {
   const getBlastRadius = opts.getBlastRadius ?? vi.fn().mockResolvedValue({
     changedSymbols: [],
@@ -40,18 +42,26 @@ function buildService(opts: {
     degraded: false,
   });
   const getIndexState = vi.fn().mockResolvedValue(opts.indexState ?? baseIndexState());
+  const countIndexedFiles = opts.countIndexedFiles ?? vi.fn().mockResolvedValue(0);
   const container = {
     db: {} as never,
     config: { repoIntelEnabled: opts.repoIntelEnabled },
-    repoIntel: { getBlastRadius, getIndexState } as never,
+    repoIntel: { getBlastRadius, getIndexState, countIndexedFiles } as never,
   } as never;
   const svc = new BlastService(container);
   (svc as unknown as { repo: Record<string, unknown> }).repo = {
     getPullForWorkspace: async () =>
-      opts.pullMissing ? undefined : { id: 'pr1', repoId: 'r1', headSha: 'deadbeef' },
+      opts.pullMissing
+        ? undefined
+        : {
+            id: 'pr1',
+            repoId: 'r1',
+            headSha: 'deadbeef',
+            defaultBranch: opts.defaultBranch === undefined ? 'main' : opts.defaultBranch,
+          },
     getPrFilePaths: async () => opts.files ?? ['src/lib/rate.ts'],
   };
-  return { svc, getBlastRadius, getIndexState };
+  return { svc, getBlastRadius, getIndexState, countIndexedFiles };
 }
 
 describe('BlastService.getBlast', () => {
@@ -111,6 +121,60 @@ describe('BlastService.getBlast', () => {
     expect(getBlastRadius).not.toHaveBeenCalled();
     expect(response.degraded).toBe(true);
     expect(response.reason).toBe('no_data');
+  });
+
+  it('calls countIndexedFiles exactly once, with the same gate as getBlastRadius, and threads the count into files.indexed', async () => {
+    const countIndexedFiles = vi.fn().mockResolvedValue(0);
+    const { svc } = buildService({
+      repoIntelEnabled: true,
+      indexState: baseIndexState({ status: 'full' }),
+      countIndexedFiles,
+    });
+    const response = await svc.getBlast('ws1', 'pr1');
+    expect(countIndexedFiles).toHaveBeenCalledTimes(1);
+    expect(countIndexedFiles).toHaveBeenCalledWith('r1', ['src/lib/rate.ts']);
+    expect(response.files).toEqual({ changed: 1, indexed: 0 });
+  });
+
+  it('counts coverage over source files only — docs/config never read as "missing from the index"', async () => {
+    const countIndexedFiles = vi.fn().mockResolvedValue(1);
+    const { svc } = buildService({
+      repoIntelEnabled: true,
+      indexState: baseIndexState({ status: 'full' }),
+      files: ['src/lib/rate.ts', 'README.md', 'package.json', 'scripts/dev.sh'],
+      countIndexedFiles,
+    });
+    const response = await svc.getBlast('ws1', 'pr1');
+    expect(countIndexedFiles).toHaveBeenCalledWith('r1', ['src/lib/rate.ts']);
+    expect(response.files).toEqual({ changed: 1, indexed: 1 });
+  });
+
+  it('never calls countIndexedFiles when the index is not usable (flag off)', async () => {
+    const countIndexedFiles = vi.fn().mockResolvedValue(5);
+    const { svc } = buildService({ repoIntelEnabled: false, countIndexedFiles });
+    const response = await svc.getBlast('ws1', 'pr1');
+    expect(countIndexedFiles).not.toHaveBeenCalled();
+    expect(response.files).toEqual({ changed: 1, indexed: 0 });
+  });
+
+  it("sets indexed_branch from the repo's default branch", async () => {
+    const { svc } = buildService({
+      repoIntelEnabled: true,
+      defaultBranch: 'develop',
+      indexState: baseIndexState({ status: 'full' }),
+    });
+    const response = await svc.getBlast('ws1', 'pr1');
+    expect(response.indexed_branch).toBe('develop');
+  });
+
+  it('indexed_branch is null when the repo has no known default branch', async () => {
+    const { svc } = buildService({
+      repoIntelEnabled: true,
+      defaultBranch: null,
+      indexState: baseIndexState({ status: 'full' }),
+    });
+    const response = await svc.getBlast('ws1', 'pr1');
+    expect(response.indexed_branch).toBeNull();
   });
 
   it('throws NotFoundError for a missing pull', async () => {

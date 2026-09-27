@@ -4,7 +4,7 @@ import { NotFoundError } from '../../platform/errors.js';
 import type { Logger } from '../reviews/run-executor.js';
 import type { BlastResult, IndexState } from '../repo-intel/types.js';
 import { BlastRepository } from './repository.js';
-import { resolveDegraded, toBlastRadiusResponse } from './helpers.js';
+import { indexableFiles, resolveDegraded, toBlastRadiusResponse } from './helpers.js';
 import { BLAST_SOURCE } from './constants.js';
 
 /**
@@ -44,8 +44,26 @@ export class BlastService {
       ? await this.container.repoIntel.getBlastRadius(pull.repoId, files)
       : null;
 
+    // Same "usable" gate as the facade read above (A5): a pure DB read, never
+    // triggered when the index isn't ready. Lets the response distinguish
+    // "no downstream impact" from "these changed files aren't in the index
+    // yet" (new files, or an index older than the PR — see the PR #218 bug
+    // this fixes).
+    // Only source files the indexer parses count toward coverage.
+    const sourceFiles = indexableFiles(files);
+    const indexedCount = usable && sourceFiles.length > 0
+      ? await this.container.repoIntel.countIndexedFiles(pull.repoId, sourceFiles)
+      : 0;
+
     const degradedInfo = resolveDegraded({ flagOn, state, filesCount: files.length, result });
-    const response = toBlastRadiusResponse(prId, result, degradedInfo, state);
+    const response = toBlastRadiusResponse(
+      prId,
+      result,
+      degradedInfo,
+      state,
+      { changed: sourceFiles.length, indexed: indexedCount },
+      pull.defaultBranch ?? null,
+    );
 
     log?.info(
       {
@@ -54,6 +72,7 @@ export class BlastService {
         source: usable ? BLAST_SOURCE.index : BLAST_SOURCE.skipped,
         indexStatus: state?.status ?? null,
         files: files.length,
+        filesIndexed: response.files.indexed,
         symbols: response.counts.symbols,
         callers: response.counts.callers,
         endpoints: response.counts.endpoints,

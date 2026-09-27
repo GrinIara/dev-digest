@@ -148,6 +148,61 @@ d('GET /pulls/:id/blast (T3, Testcontainers pg)', () => {
     expect(parsed.counts.callers).toBeGreaterThanOrEqual(2);
     expect(parsed.counts.endpoints).toBeGreaterThanOrEqual(1);
 
+    // R follow-up: the PR's one changed file (`src/lib/rate.ts`) has a
+    // `file_rank` row (seeded above), so it counts as indexed — and the repo
+    // seeds with the schema default branch ('main').
+    expect(parsed.files).toEqual({ changed: 1, indexed: 1 });
+    expect(parsed.indexed_branch).toBe('main');
+
+    await app.close();
+  });
+
+  it('changed files not yet in the index (new files) are surfaced via files/summary instead of "no downstream callers" (PR #218 bug)', async () => {
+    const app = await appWith();
+    // Two changed files: one known to the index (has symbols + a file_rank
+    // row), one brand new (no file_rank row at all) — reproduces the PR #218
+    // report where changed files are absent from `symbols`/`file_rank`.
+    const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId, [
+      'src/lib/rate.ts',
+      'src/lib/new-file.ts',
+    ]);
+    const repoIntelRepo = new RepoIntelRepository(pg.handle.db);
+
+    await repoIntelRepo.insertSymbols([
+      {
+        repoId: repo.id,
+        path: 'src/lib/rate.ts',
+        name: 'rateLimit',
+        kind: 'function',
+        line: 1,
+        endLine: 10,
+        exported: true,
+        signature: 'function rateLimit()',
+        contentHash: 'h1',
+      },
+    ]);
+    await pg.handle.db.insert(t.fileRank).values([
+      { repoId: repo.id, filePath: 'src/lib/rate.ts', pagerank: 0.9, hotness: 0, rank: 0.9, percentile: 95 },
+    ]);
+    await repoIntelRepo.upsertIndexState({
+      repoId: repo.id,
+      lastIndexedSha: 'abc123',
+      indexerVersion: 2,
+      status: 'full',
+      filesIndexed: 1,
+      filesSkipped: 0,
+      stats: {},
+    });
+
+    const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
+    expect(res.statusCode).toBe(200);
+    const parsed = BlastRadiusResponse.parse(res.json());
+
+    expect(parsed.degraded).toBe(false);
+    expect(parsed.files).toEqual({ changed: 2, indexed: 1 });
+    expect(parsed.indexed_branch).toBe('main');
+    expect(parsed.summary).toContain("1 of 2 changed files aren't in the index built from main yet.");
+
     await app.close();
   });
 
@@ -161,6 +216,10 @@ d('GET /pulls/:id/blast (T3, Testcontainers pg)', () => {
     expect(parsed.degraded).toBe(true);
     expect(parsed.reason).toBe('no_data');
     expect(parsed.downstream).toEqual([]);
+    expect(parsed.files).toEqual({ changed: 1, indexed: 0 });
+    // `indexed_branch` is the repo's own default branch (schema default
+    // 'main'), independent of whether the index itself is usable.
+    expect(parsed.indexed_branch).toBe('main');
 
     await app.close();
   });

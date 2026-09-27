@@ -360,6 +360,8 @@ export function formatBlast(blast: BlastLite, ctx: { repo: string; pr: number })
     reason: blast.reason,
     counts: blast.counts,
     callers_truncated: blast.callers_truncated,
+    files: blast.files,
+    indexed_branch: blast.indexed_branch,
     downstream,
     changed_symbols: changedSymbols,
     changed_symbols_total: blast.changed_symbols.length,

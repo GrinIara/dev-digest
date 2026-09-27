@@ -97,6 +97,11 @@ export const BlastRadiusResponse = BlastRadius.extend({
   degraded: z.boolean(),
   reason: BlastDegradedReason.nullable(),
   indexed_sha: z.string().nullable(),
+  /** The branch the index was built from (`repos.default_branch`) — the
+   *  clone the indexer syncs before every (re)index (see `resyncRepo`'s
+   *  `git.sync(ref, repo.defaultBranch)`). Null only if the repo/branch is
+   *  unknown to the caller (defensive; `repos.default_branch` is NOT NULL). */
+  indexed_branch: z.string().nullable(),
   callers_truncated: z.boolean(),
   limits: z.object({
     max_callers_per_symbol: z.number().int().positive(),
@@ -104,5 +109,15 @@ export const BlastRadiusResponse = BlastRadius.extend({
   }),
   /** Facts per caller file (only files present in `downstream`); feeds the graph view's caller→endpoint edges. */
   facts_by_file: z.record(z.string(), BlastFileFacts),
+  /** How many of the PR's changed files the persistent index knows about.
+   *  `changed` = the PR file count used for the lookup; `indexed` = how many
+   *  of those paths are covered by `file_rank` (see repo-intel/repository.ts
+   *  `countIndexedFiles` for why `file_rank`, not `symbols`, is the source).
+   *  Lets the UI/MCP distinguish "no impact" from "these files aren't in the
+   *  index yet" (new files, or an index older than the PR). */
+  files: z.object({
+    changed: z.number().int().nonnegative(),
+    indexed: z.number().int().nonnegative(),
+  }),
 });
 export type BlastRadiusResponse = z.infer<typeof BlastRadiusResponse>;

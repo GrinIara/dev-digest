@@ -6,7 +6,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Button, Card, ErrorState, SectionLabel, Skeleton } from "@devdigest/ui";
+import { Badge, Button, Card, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
 import { usePrBlast } from "@/lib/hooks/blast";
 import { BlastSummary } from "./_components/BlastSummary";
 import { BlastSymbolRow } from "./_components/BlastSymbolRow";
@@ -61,6 +61,17 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
   }
 
   const sha = data.indexed_sha ?? headSha;
+
+  // Files-not-indexed-yet hint (PR #218 bug fix): only surfaced when the
+  // response isn't otherwise degraded — a degraded response already carries
+  // its own reason badge above. `indexed === 0` means "none of the changed
+  // files are known to the index" (replaces the noDownstream text, since
+  // downstream is necessarily empty in that case); `0 < indexed < changed`
+  // means "some are missing" and is shown alongside whatever data exists.
+  const notIndexed = !data.degraded && data.files.changed > 0 && data.files.indexed < data.files.changed;
+  const missing = data.files.changed - data.files.indexed;
+  const shortIndexedSha = data.indexed_sha ? data.indexed_sha.slice(0, 7) : null;
+  const hasBranchInfo = !!data.indexed_branch && !!shortIndexedSha;
 
   return (
     <Card style={s.card}>
@@ -122,10 +133,36 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
         <div style={s.truncatedNote}>{t("truncated", { max: data.limits.max_callers_per_symbol })}</div>
       )}
 
+      {notIndexed && (
+        <div style={s.notIndexedNote}>
+          <Icon.Info size={13} style={s.notIndexedIcon} />
+          <span>
+            {data.files.indexed === 0
+              ? hasBranchInfo
+                ? t("notIndexed.none", { branch: data.indexed_branch, sha: shortIndexedSha })
+                : t("notIndexed.noneNoBranch")
+              : hasBranchInfo
+                ? t("notIndexed.some", {
+                    missing,
+                    total: data.files.changed,
+                    branch: data.indexed_branch,
+                    sha: shortIndexedSha,
+                  })
+                : t("notIndexed.someNoBranch", { missing, total: data.files.changed })}
+          </span>
+        </div>
+      )}
+
       {view === "graph" ? (
         <BlastGraph data={data} />
       ) : data.downstream.length === 0 ? (
-        <div style={s.emptyText}>{t("noDownstream", { count: data.counts.symbols })}</div>
+        // The not-indexed hint above already explains the empty state when
+        // `files.indexed === 0` — showing noDownstream too would contradict
+        // it ("no downstream callers" reads as "safe" when it's really
+        // "unknown").
+        !(notIndexed && data.files.indexed === 0) && (
+          <div style={s.emptyText}>{t("noDownstream", { count: data.counts.symbols })}</div>
+        )
       ) : (
         <div style={s.symbolList}>
           {data.downstream.map((d, i) => {

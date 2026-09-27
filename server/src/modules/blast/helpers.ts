@@ -7,7 +7,7 @@ import type {
   DownstreamImpact,
 } from '@devdigest/shared';
 import type { BlastCallerRow, BlastResult, IndexState } from '../repo-intel/types.js';
-import { BFS_DEPTH, MAX_CALLERS_PER_SYMBOL } from '../repo-intel/constants.js';
+import { BFS_DEPTH, EXCLUDED_DIRS, MAX_CALLERS_PER_SYMBOL, SUPPORTED_EXT } from '../repo-intel/constants.js';
 
 /**
  * Pure mapping/derivation helpers for the blast module. No I/O — every
@@ -19,6 +19,23 @@ import { BFS_DEPTH, MAX_CALLERS_PER_SYMBOL } from '../repo-intel/constants.js';
 /** Always `${word}(s)` regardless of `n` — matches the literal summary strings in the plan (not real singular/plural agreement). */
 function plural(n: number, word: string): string {
   return `${n} ${word}(s)`;
+}
+
+/**
+ * The subset of PR paths the repo-intel walker would index at all — same
+ * SUPPORTED_EXT + EXCLUDED_DIRS rules as `repo-intel/pipeline/walk.ts`. Used
+ * for the `files.{changed,indexed}` coverage hint so docs/config/scripts
+ * (.md, .json, .sh…) never count as "missing from the index".
+ */
+export function indexableFiles(paths: string[]): string[] {
+  const excluded = new Set<string>(EXCLUDED_DIRS);
+  return paths.filter((p) => {
+    const segments = p.split('/');
+    if (segments.slice(0, -1).some((s) => excluded.has(s))) return false;
+    const name = segments[segments.length - 1] ?? '';
+    const dot = name.lastIndexOf('.');
+    return dot > 0 && (SUPPORTED_EXT as readonly string[]).includes(name.slice(dot));
+  });
 }
 
 /**
@@ -116,14 +133,29 @@ export function buildSummary(
   counts: { symbols: number; callers: number; endpoints: number; crons: number },
   degraded: boolean,
   reason: BlastDegradedReason | null,
+  files: { changed: number; indexed: number },
+  indexedBranch: string | null,
 ): string {
   let summary: string;
-  if (counts.callers === 0) {
+  if (files.changed > 0 && files.indexed === 0) {
+    // None of the PR's changed files are known to the index — this is NOT
+    // "no downstream impact" (which would misleadingly read as "safe"), it's
+    // "the index has nothing to look up" (new files, or an index older than
+    // the PR). See the PR #218 bug report this fixes.
+    const where = indexedBranch ? `the index built from ${indexedBranch}` : 'the repo index';
+    summary =
+      `${plural(counts.symbols, 'changed symbol')}: none of the ${files.changed} changed file(s) ` +
+      `are in ${where} yet (new files, or the index is older than this PR).`;
+  } else if (counts.callers === 0) {
     summary = `${plural(counts.symbols, 'changed symbol')}, no downstream callers found.`;
   } else {
     summary =
       `${plural(counts.symbols, 'changed symbol')} reach ${plural(counts.callers, 'caller')}; ` +
       `${plural(counts.endpoints, 'endpoint')} and ${plural(counts.crons, 'cron')} may be affected.`;
+  }
+  if (files.indexed > 0 && files.indexed < files.changed) {
+    const where = indexedBranch ? ` built from ${indexedBranch}` : '';
+    summary += ` ${files.changed - files.indexed} of ${files.changed} changed files aren't in the index${where} yet.`;
   }
   if (degraded) summary += ` Index incomplete (${reason}).`;
   return summary;
@@ -170,13 +202,15 @@ export function toBlastRadiusResponse(
   result: BlastResult | null,
   degradedInfo: { degraded: boolean; reason: BlastDegradedReason | null },
   state: IndexState | null,
+  files: { changed: number; indexed: number },
+  indexedBranch: string | null,
 ): BlastRadiusResponse {
   const changedSymbols: ChangedSymbol[] = result
     ? result.changedSymbols.map((s) => ({ name: s.name, file: s.file, kind: s.kind }))
     : [];
   const downstream = result ? groupDownstream(result) : [];
   const counts = countBlast(downstream, changedSymbols);
-  const summary = buildSummary(counts, degradedInfo.degraded, degradedInfo.reason);
+  const summary = buildSummary(counts, degradedInfo.degraded, degradedInfo.reason, files, indexedBranch);
 
   // Restrict facts_by_file to caller files that actually appear in `downstream`
   // (a caller file can be dropped by the self-caller filter above, in which
@@ -198,8 +232,10 @@ export function toBlastRadiusResponse(
     degraded: degradedInfo.degraded,
     reason: degradedInfo.reason,
     indexed_sha: state?.lastIndexedSha || null,
+    indexed_branch: indexedBranch,
     callers_truncated: (result?.callers.length ?? 0) >= MAX_CALLERS_PER_SYMBOL,
     limits: { max_callers_per_symbol: MAX_CALLERS_PER_SYMBOL, bfs_depth: BFS_DEPTH },
     facts_by_file: factsByFile,
+    files,
   };
 }

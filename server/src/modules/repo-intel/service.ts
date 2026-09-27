@@ -444,6 +444,17 @@ export class RepoIntelService implements RepoIntel {
     return this.repo.getFileRankFor(repoId, paths);
   }
 
+  /**
+   * How many of `paths` are known to the persistent index (see
+   * `RepoIntelRepository.countIndexedFiles` for why `file_rank`, not
+   * `symbols`, is the source). Pure DB read, no reparse.
+   */
+  async countIndexedFiles(repoId: string, paths: string[]): Promise<number> {
+    if (!this.container.config.repoIntelEnabled) return 0;
+    if (paths.length === 0) return 0;
+    return this.repo.countIndexedFiles(repoId, paths);
+  }
+
   /** Persistent symbol read-model (T2 columns) for the given files. */
   async getSymbolsInFiles(repoId: string, paths: string[]): Promise<SymbolRow[]> {
     if (!this.container.config.repoIntelEnabled) return [];

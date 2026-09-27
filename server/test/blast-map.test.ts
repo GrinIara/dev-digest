@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   groupDownstream,
+  indexableFiles,
   countBlast,
   buildSummary,
   resolveDegraded,
@@ -173,21 +174,89 @@ describe('blast/helpers — countBlast', () => {
 
 describe('blast/helpers — buildSummary', () => {
   it('0 callers', () => {
-    expect(buildSummary({ symbols: 2, callers: 0, endpoints: 0, crons: 0 }, false, null)).toBe(
-      '2 changed symbol(s), no downstream callers found.',
-    );
+    expect(
+      buildSummary({ symbols: 2, callers: 0, endpoints: 0, crons: 0 }, false, null, { changed: 1, indexed: 1 }, null),
+    ).toBe('2 changed symbol(s), no downstream callers found.');
   });
 
   it('N callers', () => {
-    expect(buildSummary({ symbols: 1, callers: 5, endpoints: 3, crons: 1 }, false, null)).toBe(
-      '1 changed symbol(s) reach 5 caller(s); 3 endpoint(s) and 1 cron(s) may be affected.',
-    );
+    expect(
+      buildSummary({ symbols: 1, callers: 5, endpoints: 3, crons: 1 }, false, null, { changed: 1, indexed: 1 }, null),
+    ).toBe('1 changed symbol(s) reach 5 caller(s); 3 endpoint(s) and 1 cron(s) may be affected.');
   });
 
   it('appends the degraded suffix', () => {
-    expect(buildSummary({ symbols: 1, callers: 0, endpoints: 0, crons: 0 }, true, 'index_partial')).toBe(
-      '1 changed symbol(s), no downstream callers found. Index incomplete (index_partial).',
+    expect(
+      buildSummary(
+        { symbols: 1, callers: 0, endpoints: 0, crons: 0 },
+        true,
+        'index_partial',
+        { changed: 1, indexed: 1 },
+        null,
+      ),
+    ).toBe('1 changed symbol(s), no downstream callers found. Index incomplete (index_partial).');
+  });
+
+  it('none of the changed files are indexed, branch unknown — falls back to "the repo index" (PR #218 bug)', () => {
+    expect(
+      buildSummary({ symbols: 3, callers: 0, endpoints: 0, crons: 0 }, false, null, { changed: 48, indexed: 0 }, null),
+    ).toBe(
+      '3 changed symbol(s): none of the 48 changed file(s) are in the repo index yet (new files, or the index is older than this PR).',
     );
+  });
+
+  it('none of the changed files are indexed, branch known — names the branch the index is built from', () => {
+    expect(
+      buildSummary(
+        { symbols: 3, callers: 0, endpoints: 0, crons: 0 },
+        false,
+        null,
+        { changed: 48, indexed: 0 },
+        'main',
+      ),
+    ).toBe(
+      "3 changed symbol(s): none of the 48 changed file(s) are in the index built from main yet (new files, or the index is older than this PR).",
+    );
+  });
+
+  it('some (not all) changed files are indexed, branch unknown — appends the "N of M" note without a branch', () => {
+    expect(
+      buildSummary(
+        { symbols: 1, callers: 5, endpoints: 3, crons: 1 },
+        false,
+        null,
+        { changed: 10, indexed: 4 },
+        null,
+      ),
+    ).toBe(
+      "1 changed symbol(s) reach 5 caller(s); 3 endpoint(s) and 1 cron(s) may be affected. 6 of 10 changed files aren't in the index yet.",
+    );
+  });
+
+  it('some (not all) changed files are indexed, branch known — the "N of M" note names the branch', () => {
+    expect(
+      buildSummary(
+        { symbols: 1, callers: 5, endpoints: 3, crons: 1 },
+        false,
+        null,
+        { changed: 10, indexed: 4 },
+        'main',
+      ),
+    ).toBe(
+      "1 changed symbol(s) reach 5 caller(s); 3 endpoint(s) and 1 cron(s) may be affected. 6 of 10 changed files aren't in the index built from main yet.",
+    );
+  });
+
+  it('all changed files indexed — no coverage note even when the branch is known', () => {
+    expect(
+      buildSummary(
+        { symbols: 1, callers: 0, endpoints: 0, crons: 0 },
+        false,
+        null,
+        { changed: 3, indexed: 3 },
+        'main',
+      ),
+    ).toBe('1 changed symbol(s), no downstream callers found.');
   });
 });
 
@@ -280,7 +349,14 @@ describe('blast/helpers — toBlastRadiusResponse', () => {
       degraded: false,
     };
     const state = baseIndexState({ status: 'full' });
-    const response = toBlastRadiusResponse('pr1', result, { degraded: false, reason: null }, state);
+    const response = toBlastRadiusResponse(
+      'pr1',
+      result,
+      { degraded: false, reason: null },
+      state,
+      { changed: 1, indexed: 1 },
+      'main',
+    );
     expect(response.callers_truncated).toBe(true);
     expect(response.limits).toEqual({ max_callers_per_symbol: MAX_CALLERS_PER_SYMBOL, bfs_depth: BFS_DEPTH });
   });
@@ -300,20 +376,55 @@ describe('blast/helpers — toBlastRadiusResponse', () => {
       degraded: false,
     };
     const state = baseIndexState({ status: 'full' });
-    const response = toBlastRadiusResponse('pr1', result, { degraded: false, reason: null }, state);
+    const response = toBlastRadiusResponse(
+      'pr1',
+      result,
+      { degraded: false, reason: null },
+      state,
+      { changed: 1, indexed: 1 },
+      'main',
+    );
     expect(response.callers_truncated).toBe(false);
   });
 
   it('a null result (index not usable) produces an empty, degraded response with indexed_sha from state', () => {
     const state = baseIndexState({ status: 'degraded', lastIndexedSha: '', degraded: true, degradedReason: 'no_data' });
-    const response = toBlastRadiusResponse('pr1', null, { degraded: true, reason: 'no_data' }, state);
+    const response = toBlastRadiusResponse(
+      'pr1',
+      null,
+      { degraded: true, reason: 'no_data' },
+      state,
+      { changed: 0, indexed: 0 },
+      null,
+    );
     expect(response.downstream).toEqual([]);
     expect(response.changed_symbols).toEqual([]);
     expect(response.counts).toEqual({ symbols: 0, callers: 0, endpoints: 0, crons: 0 });
     expect(response.degraded).toBe(true);
     expect(response.reason).toBe('no_data');
     expect(response.indexed_sha).toBeNull();
+    expect(response.indexed_branch).toBeNull();
     expect(response.callers_truncated).toBe(false);
+  });
+
+  it('sets indexed_branch from the repo default branch, and files from the caller-supplied counts', () => {
+    const result: BlastResult = {
+      changedSymbols: [{ file: 'src/lib/rate.ts', name: 'rateLimit', kind: 'function' }],
+      callers: [],
+      impactedEndpoints: [],
+      degraded: false,
+    };
+    const state = baseIndexState({ status: 'full' });
+    const response = toBlastRadiusResponse(
+      'pr1',
+      result,
+      { degraded: false, reason: null },
+      state,
+      { changed: 3, indexed: 1 },
+      'develop',
+    );
+    expect(response.indexed_branch).toBe('develop');
+    expect(response.files).toEqual({ changed: 3, indexed: 1 });
   });
 
   it('restricts facts_by_file to caller files present in downstream', () => {
@@ -330,7 +441,33 @@ describe('blast/helpers — toBlastRadiusResponse', () => {
       degraded: false,
     };
     const state = baseIndexState({ status: 'full' });
-    const response = toBlastRadiusResponse('pr1', result, { degraded: false, reason: null }, state);
+    const response = toBlastRadiusResponse(
+      'pr1',
+      result,
+      { degraded: false, reason: null },
+      state,
+      { changed: 1, indexed: 1 },
+      'main',
+    );
     expect(Object.keys(response.facts_by_file)).toEqual(['src/api/public/index.ts']);
+  });
+});
+
+describe('blast/helpers — indexableFiles', () => {
+  it('keeps only files the repo-intel walker parses (SUPPORTED_EXT, not under EXCLUDED_DIRS)', () => {
+    expect(
+      indexableFiles([
+        'server/src/a.ts',
+        'client/src/B.tsx',
+        'scripts/x.mjs',
+        'README.md',
+        'package.json',
+        'scripts/dev.sh',
+        'server/src/db/migrations/0001.sql',
+        'client/src/vendor/shared/c.ts',
+        'node_modules/pkg/index.js',
+        'Makefile',
+      ]),
+    ).toEqual(['server/src/a.ts', 'client/src/B.tsx', 'scripts/x.mjs']);
   });
 });

@@ -241,6 +241,8 @@ describe('formatBlast', () => {
     degraded: false,
     reason: null,
     callers_truncated: false,
+    files: { changed: 1, indexed: 1 },
+    indexed_branch: 'main',
   };
 
   it('passes the downstream map through unchanged and includes the untrusted-content note', () => {
@@ -254,6 +256,8 @@ describe('formatBlast', () => {
       changed_symbols_total: 1,
       truncated: false,
       note: BLAST_UNTRUSTED_NOTE,
+      files: BASE_BLAST.files,
+      indexed_branch: BASE_BLAST.indexed_branch,
     });
   });
 

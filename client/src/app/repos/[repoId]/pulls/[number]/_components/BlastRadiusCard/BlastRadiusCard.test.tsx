@@ -38,8 +38,11 @@ const HAPPY: BlastRadiusResponse = {
   degraded: false,
   reason: null,
   indexed_sha: "abc123",
+  indexed_branch: "main",
   callers_truncated: false,
   limits: { max_callers_per_symbol: 20, bfs_depth: 2 },
+  // Fully covered by the index — no not-indexed hint in the happy-path fixture.
+  files: { changed: 2, indexed: 2 },
   // One caller file per endpoint, so buildGraphLayout's caller→endpoint
   // edges (T9) are deterministic: publicRouter/adminRouter/userRouter each
   // declare one endpoint; webhookHandler/resetJob declare none (resetJob's
@@ -175,6 +178,84 @@ describe("BlastRadiusCard", () => {
 
     expect(screen.getByText("2 changed symbol(s), no downstream callers found.")).toBeInTheDocument();
     expect(screen.queryAllByRole("link")).toHaveLength(0);
+  });
+
+  it("not indexed (none): shows the branch/sha hint instead of noDownstream when no changed files are indexed yet (PR #218 bug fix)", () => {
+    blastState = {
+      data: {
+        ...HAPPY,
+        downstream: [],
+        changed_symbols: [],
+        counts: { symbols: 0, callers: 0, endpoints: 0, crons: 0 },
+        indexed_sha: "0123456789abcdef",
+        indexed_branch: "main",
+        files: { changed: 48, indexed: 0 },
+      },
+      isLoading: false,
+      isError: false,
+      refetch,
+    };
+    renderCard();
+
+    expect(
+      screen.getByText(
+        "None of this PR's changed files are in the repo index yet. The index is built from main (0123456), so files added or moved in this PR aren't known to it until they're merged.",
+      ),
+    ).toBeInTheDocument();
+    // The hint replaces noDownstream, not supplements it.
+    expect(screen.queryByText(/no downstream callers found/)).not.toBeInTheDocument();
+  });
+
+  it("not indexed (some): shows the partial-coverage hint alongside the existing data", () => {
+    blastState = {
+      data: { ...HAPPY, files: { changed: 5, indexed: 2 } },
+      isLoading: false,
+      isError: false,
+      refetch,
+    };
+    renderCard();
+
+    expect(
+      screen.getByText("3 of 5 changed files aren't in the repo index (built from main (abc123)) — new or moved in this PR."),
+    ).toBeInTheDocument();
+    // Data is still shown alongside the hint.
+    expect(screen.getByText("rateLimit()")).toBeInTheDocument();
+  });
+
+  it("not indexed: falls back to the no-branch wording when indexed_branch/indexed_sha are unknown", () => {
+    blastState = {
+      data: {
+        ...HAPPY,
+        downstream: [],
+        changed_symbols: [],
+        counts: { symbols: 0, callers: 0, endpoints: 0, crons: 0 },
+        indexed_sha: null,
+        indexed_branch: null,
+        files: { changed: 3, indexed: 0 },
+      },
+      isLoading: false,
+      isError: false,
+      refetch,
+    };
+    renderCard();
+
+    expect(
+      screen.getByText(
+        "None of this PR's changed files are in the repo index yet — they're new or the index is older than the PR. Callers can't be resolved for them.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("not indexed hint is suppressed when the response is degraded (the degraded badge already explains it)", () => {
+    blastState = {
+      data: { ...HAPPY, degraded: true, reason: "index_partial", files: { changed: 5, indexed: 2 } },
+      isLoading: false,
+      isError: false,
+      refetch,
+    };
+    renderCard();
+
+    expect(screen.queryByText(/aren't in the repo index/)).not.toBeInTheDocument();
   });
 
   it("degraded: shows the badge with the reason label alongside the data (R4, R8)", () => {
