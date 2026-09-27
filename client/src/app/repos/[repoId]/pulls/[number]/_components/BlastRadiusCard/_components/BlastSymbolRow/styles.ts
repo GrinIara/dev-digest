@@ -26,12 +26,15 @@ export const s = {
   callerRow: {
     display: "flex",
     gap: 6,
-    alignItems: "center",
+    alignItems: "baseline",
     paddingLeft: 14,
     fontSize: 13,
+    minWidth: 0,
   } satisfies CSSProperties,
   callerArrow: { color: "var(--text-muted)" } satisfies CSSProperties,
-  callerLinkStatic: { color: "var(--text-secondary)" } satisfies CSSProperties,
+  /** Last resort when even a full-width card is narrower than the path:
+   *  wrap inside the path instead of overflowing the card. */
+  callerLinkStatic: { color: "var(--text-secondary)", overflowWrap: "anywhere" } satisfies CSSProperties,
   /** Mirrors `@devdigest/ui`'s `MonoLink` hover behaviour (accent colour +
    *  underline on hover) — this row can't reuse `MonoLink` itself because it
    *  needs a custom `aria-label` that `MonoLink` doesn't pass through. */
@@ -39,6 +42,7 @@ export const s = {
     color: hovered ? "var(--accent-text)" : "var(--text-secondary)",
     textDecoration: hovered ? "underline" : "none",
     textUnderlineOffset: 2,
+    overflowWrap: "anywhere",
   }),
   chipsRow: {
     marginTop: 8,

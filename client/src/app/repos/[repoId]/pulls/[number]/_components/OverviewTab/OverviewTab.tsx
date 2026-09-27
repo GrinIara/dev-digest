@@ -19,8 +19,12 @@ export function OverviewTab({ prId, prBody, repoId, repoFullName, headSha }: Ove
     <>
       {prId && (
         <div style={s.cardsRow}>
-          <IntentCard prId={prId} />
-          <BlastRadiusCard prId={prId} repoId={repoId} repoFullName={repoFullName} headSha={headSha} />
+          <div style={s.intentSlot}>
+            <IntentCard prId={prId} />
+          </div>
+          <div style={s.blastSlot}>
+            <BlastRadiusCard prId={prId} repoId={repoId} repoFullName={repoFullName} headSha={headSha} />
+          </div>
         </div>
       )}
 
