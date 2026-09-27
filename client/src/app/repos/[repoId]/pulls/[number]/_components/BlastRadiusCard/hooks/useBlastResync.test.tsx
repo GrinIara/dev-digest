@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ApiError } from "@/lib/api";
 import { RESYNC_POLL_MAX_MS } from "../constants";
 
 interface FakeStatus {
@@ -10,8 +11,10 @@ interface FakeStatus {
   lastIndexedSha: string;
 }
 
+type MutateOptions = { onError?: (err: unknown) => void };
+
 let statusData: FakeStatus | undefined;
-const resyncMutate = vi.fn();
+const resyncMutate = vi.fn<(vars: unknown, opts?: MutateOptions) => void>();
 
 vi.mock("@/lib/hooks/repo-intel", () => ({
   useResyncRepoIntel: () => ({ mutate: resyncMutate, isPending: false }),
@@ -33,7 +36,7 @@ function renderWithClient(prId: string) {
 describe("useBlastResync", () => {
   beforeEach(() => {
     statusData = undefined;
-    resyncMutate.mockClear();
+    resyncMutate.mockReset();
   });
 
   afterEach(() => {
@@ -78,7 +81,7 @@ describe("useBlastResync", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["pr-blast", "pr1"] });
   });
 
-  it("no progress: stops at RESYNC_POLL_MAX_MS regardless of baseline availability", () => {
+  it("no progress: stops at RESYNC_POLL_MAX_MS regardless of baseline availability, and exposes noChange rather than silently invalidating", () => {
     vi.useFakeTimers();
     statusData = { status: "full", updatedAt: "t0", lastIndexedSha: "sha0" };
     const { result, invalidateSpy } = renderWithClient("pr1");
@@ -91,6 +94,38 @@ describe("useBlastResync", () => {
     });
 
     expect(result.current.running).toBe(false);
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["pr-blast", "pr1"] });
+    expect(result.current.noChange).toBe(true);
+    expect(result.current.error).toBeNull();
+    // Nothing changed server-side — refetching the same blast data would be
+    // wasted work, so the timeout path does NOT invalidate the query (unlike
+    // the "advanced" path above).
+    expect(invalidateSpy).not.toHaveBeenCalled();
+
+    // A fresh click clears the stale noChange flag.
+    act(() => result.current.start());
+    expect(result.current.noChange).toBe(false);
+  });
+
+  it("mutate error (e.g. the 409 the server now returns for an un-cloned repo): stops polling immediately and exposes the message, without invalidating the blast query", () => {
+    statusData = { status: "full", updatedAt: "t0", lastIndexedSha: "sha0" };
+    resyncMutate.mockImplementation((_vars, opts) => {
+      opts?.onError?.(
+        new ApiError(
+          "Repository isn't cloned yet — sync the repo first, then resync the index.",
+          409,
+          "repo_not_cloned",
+        ),
+      );
+    });
+    const { result, invalidateSpy } = renderWithClient("pr1");
+
+    act(() => result.current.start());
+
+    expect(result.current.running).toBe(false);
+    expect(result.current.error).toBe(
+      "Repository isn't cloned yet — sync the repo first, then resync the index.",
+    );
+    expect(result.current.noChange).toBe(false);
+    expect(invalidateSpy).not.toHaveBeenCalled();
   });
 });

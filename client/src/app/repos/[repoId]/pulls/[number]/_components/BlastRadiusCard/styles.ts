@@ -12,6 +12,19 @@ export const s = {
     color: "var(--text-muted)",
     marginTop: 8,
   } satisfies CSSProperties,
+  /** Inline line under the header row surfacing a failed/no-op resync (T8 bug
+   *  fix) — kept separate from `truncatedNote` so the error variant can use
+   *  the crit color instead of muted text. */
+  resyncNote: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+    marginTop: 6,
+  } satisfies CSSProperties,
+  resyncNoteError: {
+    fontSize: 12,
+    color: "var(--crit)",
+    marginTop: 6,
+  } satisfies CSSProperties,
   emptyText: {
     fontSize: 13,
     color: "var(--text-secondary)",

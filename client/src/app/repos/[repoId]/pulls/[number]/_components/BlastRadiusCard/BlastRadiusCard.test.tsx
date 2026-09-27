@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { BlastRadiusResponse } from "@devdigest/shared";
+import { ApiError } from "@/lib/api";
 import messages from "../../../../../../../../messages/en/blast.json";
 
 const HAPPY: BlastRadiusResponse = {
@@ -78,7 +79,7 @@ import { buildGraphLayout } from "./helpers";
 afterEach(() => {
   cleanup();
   refetch.mockClear();
-  resyncMutate.mockClear();
+  resyncMutate.mockReset();
   blastState = { data: HAPPY, isLoading: false, isError: false, refetch };
 });
 
@@ -201,6 +202,33 @@ describe("BlastRadiusCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Resync" }));
     expect(resyncMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("resync failure: a 409 from POST /repos/:id/resync (repo not cloned) stops the spinner and shows the error text (bug fix)", () => {
+    blastState = {
+      data: { ...HAPPY, degraded: true, reason: "index_partial" },
+      isLoading: false,
+      isError: false,
+      refetch,
+    };
+    resyncMutate.mockImplementation((_vars: unknown, opts?: { onError?: (err: unknown) => void }) => {
+      opts?.onError?.(
+        new ApiError(
+          "Repository isn't cloned yet — sync the repo first, then resync the index.",
+          409,
+          "repo_not_cloned",
+        ),
+      );
+    });
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Resync" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Resync failed: Repository isn't cloned yet — sync the repo first, then resync the index.",
+    );
+    // The button goes back to "Resync" (not stuck on the loading spinner) so the user can retry.
+    expect(screen.getByRole("button", { name: "Resync" })).toBeInTheDocument();
   });
 
   it("resync: the button is absent when the degraded reason is flag_off (resync can't fix a disabled flag)", () => {

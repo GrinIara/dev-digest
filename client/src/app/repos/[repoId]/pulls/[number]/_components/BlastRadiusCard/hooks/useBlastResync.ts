@@ -1,12 +1,20 @@
 /* useBlastResync — colocated UI-behaviour hook for the T8 Resync button.
    Reuses the existing repo-intel data hooks (useResyncRepoIntel/
-   useRepoIntelStatus) unchanged; this hook only adds the "poll until the
-   index state advances (or a max duration elapses), then refetch the blast
-   radius" behaviour on top. */
+   useRepoIntelStatus) unchanged; this hook adds the "poll until the index
+   state advances (or a max duration elapses), then refetch the blast radius"
+   behaviour on top, plus two failure signals the naive poll didn't surface:
+     - `error`   — the POST /repos/:id/resync request itself failed (e.g. the
+                   404/409 the server now returns instead of silently
+                   enqueueing a job that degrades and persists nothing);
+     - `noChange` — the request was accepted, but nothing was observably
+                    different by RESYNC_POLL_MAX_MS (the index still didn't
+                    advance) — distinct from a plain error so the UI can say
+                    "no change" instead of implying the request failed. */
 "use client";
 
 import React from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@/lib/api";
 import { prBlastKey } from "@/lib/hooks/blast";
 import { useRepoIntelStatus, useResyncRepoIntel } from "@/lib/hooks/repo-intel";
 import { RESYNC_POLL_MAX_MS } from "../constants";
@@ -16,10 +24,21 @@ interface ResyncBaseline {
   lastIndexedSha: string;
 }
 
-export function useBlastResync(repoId: string, prId: string): { start: () => void; running: boolean } {
+interface UseBlastResyncResult {
+  start: () => void;
+  running: boolean;
+  /** Message from the failed POST /repos/:id/resync, or null. Cleared on the next `start()`. */
+  error: string | null;
+  /** True once RESYNC_POLL_MAX_MS elapsed with no observed index progress. Cleared on the next `start()`. */
+  noChange: boolean;
+}
+
+export function useBlastResync(repoId: string, prId: string): UseBlastResyncResult {
   const qc = useQueryClient();
   const resync = useResyncRepoIntel(repoId);
   const [polling, setPolling] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [noChange, setNoChange] = React.useState(false);
   const { data: status } = useRepoIntelStatus(repoId, polling);
   const baselineRef = React.useRef<ResyncBaseline | null>(null);
   // When `status` hasn't loaded yet at click time, there's no baseline to
@@ -37,13 +56,25 @@ export function useBlastResync(repoId: string, prId: string): { start: () => voi
     }
   }, []);
 
+  // The resync actually advanced the index — stop polling and refetch the blast map.
   const stop = React.useCallback(() => {
     clearPollTimeout();
     setPolling(false);
     qc.invalidateQueries({ queryKey: prBlastKey(prId) });
   }, [clearPollTimeout, qc, prId]);
 
+  // RESYNC_POLL_MAX_MS elapsed with no observed progress — stop polling without
+  // pretending anything changed (no query invalidation: refetching the same
+  // blast data would just be wasted work).
+  const giveUp = React.useCallback(() => {
+    clearPollTimeout();
+    setPolling(false);
+    setNoChange(true);
+  }, [clearPollTimeout]);
+
   const start = React.useCallback(() => {
+    setError(null);
+    setNoChange(false);
     if (status) {
       baselineRef.current = { updatedAt: status.updatedAt, lastIndexedSha: status.lastIndexedSha };
       baselinePendingRef.current = false;
@@ -51,11 +82,25 @@ export function useBlastResync(repoId: string, prId: string): { start: () => voi
       baselineRef.current = null;
       baselinePendingRef.current = true;
     }
-    resync.mutate();
+    // Set `polling`/the timeout BEFORE calling `mutate` (not after) so that
+    // however soon `onError` fires — TanStack Query always calls it
+    // asynchronously in real usage, but nothing here should depend on that —
+    // its `setPolling(false)` is guaranteed to be the last write, not one
+    // `setPolling(true)` immediately clobbers.
     setPolling(true);
     clearPollTimeout();
-    timeoutRef.current = setTimeout(stop, RESYNC_POLL_MAX_MS);
-  }, [status, resync, stop, clearPollTimeout]);
+    timeoutRef.current = setTimeout(giveUp, RESYNC_POLL_MAX_MS);
+    resync.mutate(undefined, {
+      // The POST itself failed (404 unknown repo, 409 not cloned yet, network
+      // error, …) — stop polling immediately instead of waiting out the full
+      // RESYNC_POLL_MAX_MS for a job that was never even enqueued.
+      onError: (err) => {
+        clearPollTimeout();
+        setPolling(false);
+        setError(err instanceof ApiError ? err.message : "Resync failed.");
+      },
+    });
+  }, [status, resync, clearPollTimeout, giveUp]);
 
   // Syncs with server state: once either baseline value has advanced, the
   // resync is done (or at least far enough along to show fresh data). If no
@@ -80,5 +125,5 @@ export function useBlastResync(repoId: string, prId: string): { start: () => voi
   // Cleanup on unmount — never leave a dangling timer.
   React.useEffect(() => clearPollTimeout, [clearPollTimeout]);
 
-  return { start, running: polling };
+  return { start, running: polling, error, noChange };
 }

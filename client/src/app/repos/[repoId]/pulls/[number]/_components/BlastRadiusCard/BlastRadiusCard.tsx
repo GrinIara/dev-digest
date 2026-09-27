@@ -27,7 +27,10 @@ interface BlastRadiusCardProps {
 export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRadiusCardProps) {
   const t = useTranslations("blast");
   const { data, isLoading, isError, refetch } = usePrBlast(prId);
-  const { start: startResync, running: resyncing } = useBlastResync(repoId, prId);
+  const { start: startResync, running: resyncing, error: resyncError, noChange: resyncNoChange } = useBlastResync(
+    repoId,
+    prId,
+  );
   // Local UI state (R11), not derived data: `null` means "no row has been
   // toggled yet" — the default (first row open, rest collapsed) is computed
   // per render from `data`, since `data` isn't available on the initial
@@ -81,6 +84,15 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
       >
         {t("title")}
       </SectionLabel>
+
+      {data.degraded && resyncError && (
+        <div role="alert" style={s.resyncNoteError}>
+          {t("resyncFailed", { message: resyncError })}
+        </div>
+      )}
+      {data.degraded && !resyncError && resyncNoChange && (
+        <div style={s.resyncNote}>{t("resyncNoChange")}</div>
+      )}
 
       <BlastSummary
         counts={data.counts}
