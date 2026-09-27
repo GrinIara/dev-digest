@@ -11,6 +11,7 @@ import {
   FIXTURE_RUN_DONE,
   FIXTURE_REVIEW,
   FIXTURE_CONVENTIONS,
+  FIXTURE_BLAST,
 } from './helpers/fake-api.js';
 
 const BASE_CONFIG: McpConfig = {
@@ -89,6 +90,16 @@ describe('createHttpApi — happy paths', () => {
     const rows = await api.listConventions(FIXTURE_REPO.id);
     expect(rows).toHaveLength(3);
   });
+
+  it('getBlast parses the blast response, stripping transport-only fields', async () => {
+    const { fetch } = createFakeFetch({
+      [`GET /pulls/${FIXTURE_PR.id}/blast`]: { status: 200, body: FIXTURE_BLAST },
+    });
+    const api = createHttpApi(BASE_CONFIG, fetch);
+    const blast = await api.getBlast(FIXTURE_PR.id);
+    expect(blast.downstream).toEqual(FIXTURE_BLAST.downstream);
+    expect(Object.keys(blast)).not.toContain('indexed_sha');
+  });
 });
 
 describe('createHttpApi — error mapping', () => {
@@ -138,6 +149,15 @@ describe('createHttpApi — error mapping', () => {
     // Never blamed on the API — nothing was ever sent.
     expect(apiErr.message).not.toContain('unexpected response');
     expect(apiErr.message).not.toContain('API returned');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('getBlast rejects a non-uuid prId before calling fetch (0 recorded calls)', async () => {
+    const { fetch, calls } = createFakeFetch({});
+    const api = createHttpApi(BASE_CONFIG, fetch);
+    const err = await api.getBlast('not-a-uuid').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).kind).toBe('invalid_input');
     expect(calls).toHaveLength(0);
   });
 

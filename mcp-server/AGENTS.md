@@ -51,7 +51,7 @@ emits JS: run as TypeScript source via `tsx`, consistent with
 - Zod schema naming matches the repo convention: `export const X = z.object(...); export type X = z.infer<typeof X>`.
 
 ## Gotchas
-- The API must be running (`./scripts/dev.sh`) for any tool except `get_blast_radius` (stub, makes no calls). Every network-error message names `./scripts/dev.sh`.
+- The API must be running (`./scripts/dev.sh`) for every tool — none of the five is a no-op stub. Every network-error message names `./scripts/dev.sh`.
 - `GET /repos/:id/pulls` syncs from GitHub first when a token is configured, so it is slow — `Resolver` caches `(repo, number) → pr_id` for the process lifetime.
 - A run can reach a terminal status without a `run_traces` row (boot reaper, orphan cancel — `server/src/modules/reviews/service.ts:90-100`), so completion is detected by polling `GET /pulls/:id/runs` (`RunSummary.status`), never `/runs/:id/trace`.
 - `mcp-server/mcp.json`'s per-server `"timeout"` (ms, hard wall-clock, overrides `MCP_TOOL_TIMEOUT` for this server) is a different knob from `MCP_TOOL_TIMEOUT`/`MCP_TIMEOUT` (Claude Code's own env, not this package's `env` block, and not read from `mcp.json`'s `env`). Progress notifications never extend either timeout. See `mcp-server/README.md` for the layering and `Insights.md` for what was verified against the installed CLI.

@@ -9,6 +9,7 @@ import {
   RunLite,
   ReviewLite,
   ConventionLite,
+  BlastLite,
 } from './schemas.js';
 import {
   httpErrorFromResponse,
@@ -127,6 +128,11 @@ export function createHttpApi(config: McpConfig, fetchImpl: FetchLike = fetch): 
     async listConventions(repoId: string) {
       assertUuid(repoId, 'repoId');
       return request(`/repos/${repoId}/conventions`, z.array(ConventionLite));
+    },
+
+    async getBlast(prId: string) {
+      assertUuid(prId, 'prId');
+      return request(`/pulls/${prId}/blast`, BlastLite);
     },
   };
 }

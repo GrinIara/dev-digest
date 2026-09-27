@@ -1,5 +1,13 @@
-import type { AgentLite, ConventionLite, FindingLite, ReviewLite, Severity, Verdict } from './ports.js';
-import { MAX_RESPONSE_CHARS, UNTRUSTED_NOTE } from './tool-result.js';
+import type {
+  AgentLite,
+  BlastLite,
+  ConventionLite,
+  FindingLite,
+  ReviewLite,
+  Severity,
+  Verdict,
+} from './ports.js';
+import { BLAST_UNTRUSTED_NOTE, MAX_RESPONSE_CHARS, UNTRUSTED_NOTE } from './tool-result.js';
 
 /** Reserves room for the summary line + envelope punctuation so the whole
  * rendered text (summary + JSON, per `ok()`) stays inside `MAX_RESPONSE_CHARS`
@@ -307,4 +315,69 @@ export function formatAgents(agents: AgentLite[]): FormatAgentsResult {
   }
 
   return { agents: concise, enabledCount, omitted };
+}
+
+// ---- Blast radius --------------------------------------------------------
+
+export interface FormatBlastResult {
+  summary: string;
+  payload: unknown;
+}
+
+/**
+ * Shapes `GET /pulls/:id/blast`'s `BlastLite` into the tool's summary + JSON
+ * payload (T6/R9). `changed_symbols` in the payload is a flat list of names
+ * (capped at 50; `changed_symbols_total` reports the real count) — the tool
+ * only needs `downstream` for callers/endpoints/crons, not the full
+ * `{name,file,kind}` shape server-side callers get.
+ *
+ * The budget check here is deliberately per-call (`MAX_RESPONSE_CHARS -
+ * summary.length - 1`) rather than the shared `fitsBudget`/`PAYLOAD_BUDGET`
+ * margin constant, because the degraded-suffix summary line can itself be
+ * long enough to matter for a small payload. The `- 1` accounts for the `\n`
+ * `ok()` (`tool-result.ts`) joins the summary and JSON payload with — without
+ * it, a payload that exactly fills `MAX_RESPONSE_CHARS - summary.length`
+ * pushes the combined `${summary}\n${JSON}` one character over the cap.
+ */
+export function formatBlast(blast: BlastLite, ctx: { repo: string; pr: number }): FormatBlastResult {
+  let summary = blast.summary;
+  if (blast.degraded) {
+    summary +=
+      ` Index incomplete (${blast.reason}): results may miss callers — ` +
+      `resync the repo in DevDigest, then retry.`;
+  }
+
+  const budget = MAX_RESPONSE_CHARS - summary.length - 1;
+  let changedSymbols = blast.changed_symbols.slice(0, 50).map((s) => s.name);
+  let downstream = blast.downstream;
+  let truncated = false;
+
+  const buildPayload = () => ({
+    repo: ctx.repo,
+    pr: ctx.pr,
+    summary: blast.summary,
+    degraded: blast.degraded,
+    reason: blast.reason,
+    counts: blast.counts,
+    callers_truncated: blast.callers_truncated,
+    downstream,
+    changed_symbols: changedSymbols,
+    changed_symbols_total: blast.changed_symbols.length,
+    truncated,
+    note: BLAST_UNTRUSTED_NOTE,
+  });
+
+  let payload = buildPayload();
+  if (JSON.stringify(payload).length > budget) {
+    changedSymbols = [];
+    truncated = true;
+    payload = buildPayload();
+  }
+  while (downstream.length > 0 && JSON.stringify(payload).length > budget) {
+    downstream = downstream.slice(0, -1);
+    truncated = true;
+    payload = buildPayload();
+  }
+
+  return { summary, payload };
 }

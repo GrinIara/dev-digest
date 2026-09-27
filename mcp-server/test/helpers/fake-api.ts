@@ -216,6 +216,46 @@ export const FIXTURE_REVIEW = {
   ],
 };
 
+export const FIXTURE_BLAST = {
+  pr_id: FIXTURE_PR.id,
+  changed_symbols: [{ name: 'rateLimit', file: 'src/lib/rate.ts', kind: 'function' }],
+  downstream: [
+    {
+      symbol: 'rateLimit',
+      callers: [
+        { name: 'publicRouter', file: 'src/api/public/index.ts', line: 23 },
+        { name: 'webhookHandler', file: 'src/api/webhooks.ts', line: 10 },
+      ],
+      endpoints_affected: ['GET /api/public/items'],
+      crons_affected: ['job:reset-rate-buckets'],
+    },
+  ],
+  summary: '1 changed symbol(s) reach 2 caller(s); 1 endpoint(s) and 1 cron(s) may be affected.',
+  counts: { symbols: 1, callers: 2, endpoints: 1, crons: 1 },
+  degraded: false,
+  reason: null,
+  indexed_sha: 'abc123',
+  callers_truncated: false,
+  limits: { max_callers_per_symbol: 20, bfs_depth: 2 },
+  facts_by_file: {
+    'src/api/public/index.ts': { endpoints: ['GET /api/public/items'], crons: ['job:reset-rate-buckets'] },
+  },
+};
+
+export const FIXTURE_BLAST_DEGRADED = {
+  pr_id: FIXTURE_PR.id,
+  changed_symbols: [],
+  downstream: [],
+  summary: '0 changed symbol(s), no downstream callers found.',
+  counts: { symbols: 0, callers: 0, endpoints: 0, crons: 0 },
+  degraded: true,
+  reason: 'no_data',
+  indexed_sha: null,
+  callers_truncated: false,
+  limits: { max_callers_per_symbol: 20, bfs_depth: 2 },
+  facts_by_file: {},
+};
+
 export const FIXTURE_CONVENTIONS = [
   {
     id: '66666666-6666-4666-8666-666666666661',

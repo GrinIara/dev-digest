@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { formatAgents, formatConventions, formatReview } from '../src/domain/format.js';
-import type { FindingLite, ReviewLite, ConventionLite, AgentLite } from '../src/domain/ports.js';
-import { UNTRUSTED_NOTE, MAX_RESPONSE_CHARS } from '../src/domain/tool-result.js';
+import { formatAgents, formatBlast, formatConventions, formatReview } from '../src/domain/format.js';
+import type { BlastLite, FindingLite, ReviewLite, ConventionLite, AgentLite } from '../src/domain/ports.js';
+import { BLAST_UNTRUSTED_NOTE, UNTRUSTED_NOTE, MAX_RESPONSE_CHARS } from '../src/domain/tool-result.js';
 
 function finding(overrides: Partial<FindingLite>): FindingLite {
   return {
@@ -222,6 +222,78 @@ describe('formatAgents', () => {
     expect(rendered.length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
     expect(omitted).toBeGreaterThan(0);
     expect(out.length + omitted).toBe(agents.length);
+  });
+});
+
+describe('formatBlast', () => {
+  const BASE_BLAST: BlastLite = {
+    changed_symbols: [{ name: 'rateLimit', file: 'src/lib/rate.ts', kind: 'function' }],
+    downstream: [
+      {
+        symbol: 'rateLimit',
+        callers: [{ name: 'publicRouter', file: 'src/api/public/index.ts', line: 23 }],
+        endpoints_affected: ['GET /api/public/items'],
+        crons_affected: ['job:reset-rate-buckets'],
+      },
+    ],
+    summary: '1 changed symbol(s) reach 1 caller(s); 1 endpoint(s) and 1 cron(s) may be affected.',
+    counts: { symbols: 1, callers: 1, endpoints: 1, crons: 1 },
+    degraded: false,
+    reason: null,
+    callers_truncated: false,
+  };
+
+  it('passes the downstream map through unchanged and includes the untrusted-content note', () => {
+    const { summary, payload } = formatBlast(BASE_BLAST, { repo: 'acme/api', pr: 482 });
+    expect(summary).toBe(BASE_BLAST.summary);
+    expect(payload).toMatchObject({
+      repo: 'acme/api',
+      pr: 482,
+      downstream: BASE_BLAST.downstream,
+      changed_symbols: ['rateLimit'],
+      changed_symbols_total: 1,
+      truncated: false,
+      note: BLAST_UNTRUSTED_NOTE,
+    });
+  });
+
+  it('appends the degraded-reason hint to the summary line when degraded', () => {
+    const { summary } = formatBlast(
+      { ...BASE_BLAST, degraded: true, reason: 'no_data' },
+      { repo: 'acme/api', pr: 482 },
+    );
+    expect(summary).toContain('Index incomplete (no_data)');
+    expect(summary).toContain('resync the repo in DevDigest');
+  });
+
+  it('drops changed_symbols then trims downstream from the end when the payload is oversized, and sets truncated: true', () => {
+    const huge: BlastLite = {
+      ...BASE_BLAST,
+      changed_symbols: Array.from({ length: 200 }, (_, i) => ({
+        name: `symbol${i}`,
+        file: `src/file${i}.ts`,
+        kind: 'function',
+      })),
+      downstream: Array.from({ length: 200 }, (_, i) => ({
+        symbol: `symbol${i}`,
+        callers: Array.from({ length: 20 }, (_, j) => ({
+          name: `caller${j}`,
+          file: `src/caller${i}_${j}.ts`,
+          line: j + 1,
+        })),
+        endpoints_affected: [`GET /api/x${i}`],
+        crons_affected: [`job:cron${i}`],
+      })),
+    };
+    const { summary, payload } = formatBlast(huge, { repo: 'acme/api', pr: 482 });
+    const rendered = JSON.stringify(payload);
+    // The `+ 1` is the `\n` `ok()` joins summary + JSON with (tool-result.ts)
+    // — the full rendered tool text must stay within MAX_RESPONSE_CHARS, not
+    // just the JSON payload on its own.
+    expect(summary.length + 1 + rendered.length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
+    expect((payload as { truncated: boolean }).truncated).toBe(true);
+    expect((payload as { changed_symbols: string[] }).changed_symbols).toEqual([]);
+    expect((payload as { downstream: unknown[] }).downstream.length).toBeLessThan(huge.downstream.length);
   });
 });
 

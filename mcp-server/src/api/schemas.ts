@@ -8,6 +8,7 @@ import type {
   ReviewRecord,
   ConventionCandidate,
   Finding,
+  BlastRadiusResponse,
 } from '@devdigest/shared';
 
 /**
@@ -152,6 +153,51 @@ type _ConventionLiteDrift = AssertAssignable<
     | 'status'
   >,
   ConventionLite
+>;
+
+/**
+ * `BlastLite` strips the transport-only fields `GET /pulls/:id/blast` also
+ * carries (`pr_id`, `indexed_sha`, `limits`, `facts_by_file`) — none of them
+ * are needed by the tool's payload (T6). `reason` is a local enum copy rather
+ * than importing the shared `BlastDegradedReason` schema at runtime (§6a:
+ * `@devdigest/shared` is type-only here).
+ */
+export const BlastCallerLite = z.object({
+  name: z.string(),
+  file: z.string(),
+  line: z.number().int(),
+});
+export type BlastCallerLite = z.infer<typeof BlastCallerLite>;
+
+export const BlastDownstreamLite = z.object({
+  symbol: z.string(),
+  callers: z.array(BlastCallerLite),
+  endpoints_affected: z.array(z.string()),
+  crons_affected: z.array(z.string()),
+});
+export type BlastDownstreamLite = z.infer<typeof BlastDownstreamLite>;
+
+export const BlastLite = z.object({
+  changed_symbols: z.array(z.object({ name: z.string(), file: z.string(), kind: z.string() })),
+  downstream: z.array(BlastDownstreamLite),
+  summary: z.string(),
+  counts: z.object({
+    symbols: z.number().int(),
+    callers: z.number().int(),
+    endpoints: z.number().int(),
+    crons: z.number().int(),
+  }),
+  degraded: z.boolean(),
+  reason: z.enum(['flag_off', 'index_failed', 'index_partial', 'repo_too_large', 'no_data']).nullable(),
+  callers_truncated: z.boolean(),
+});
+export type BlastLite = z.infer<typeof BlastLite>;
+type _BlastLiteDrift = AssertAssignable<
+  Pick<
+    BlastRadiusResponse,
+    'changed_symbols' | 'downstream' | 'summary' | 'counts' | 'degraded' | 'reason' | 'callers_truncated'
+  >,
+  BlastLite
 >;
 
 /** `ApiErrorBody` in `@devdigest/shared` (`{ error: { code, message, details } }`). */

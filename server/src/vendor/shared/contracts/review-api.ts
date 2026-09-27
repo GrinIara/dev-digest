@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Finding, Verdict } from './findings.js';
-import { Intent, SmartDiff } from './brief.js';
+import { Intent, SmartDiff, BlastRadius } from './brief.js';
 
 /**
  * A2 — Review-Core API surface contracts. These extend the core
@@ -77,3 +77,32 @@ export type PrIntentResponse = z.infer<typeof PrIntentResponse>;
 /** Smart-diff response for a PR (the SmartDiff). */
 export const SmartDiffResponse = SmartDiff;
 export type SmartDiffResponse = z.infer<typeof SmartDiffResponse>;
+
+/** Why a blast response is incomplete; mirrors repo-intel's DegradedReason. */
+export const BlastDegradedReason = z.enum(['flag_off', 'index_failed', 'index_partial', 'repo_too_large', 'no_data']);
+export type BlastDegradedReason = z.infer<typeof BlastDegradedReason>;
+
+export const BlastFileFacts = z.object({ endpoints: z.array(z.string()), crons: z.array(z.string()) });
+export type BlastFileFacts = z.infer<typeof BlastFileFacts>;
+
+/** Response of `GET /pulls/:id/blast`: the BlastRadius plus read-model metadata. */
+export const BlastRadiusResponse = BlastRadius.extend({
+  pr_id: z.string(),
+  counts: z.object({
+    symbols: z.number().int().nonnegative(),
+    callers: z.number().int().nonnegative(),
+    endpoints: z.number().int().nonnegative(),
+    crons: z.number().int().nonnegative(),
+  }),
+  degraded: z.boolean(),
+  reason: BlastDegradedReason.nullable(),
+  indexed_sha: z.string().nullable(),
+  callers_truncated: z.boolean(),
+  limits: z.object({
+    max_callers_per_symbol: z.number().int().positive(),
+    bfs_depth: z.number().int().positive(),
+  }),
+  /** Facts per caller file (only files present in `downstream`); feeds the graph view's caller→endpoint edges. */
+  facts_by_file: z.record(z.string(), BlastFileFacts),
+});
+export type BlastRadiusResponse = z.infer<typeof BlastRadiusResponse>;

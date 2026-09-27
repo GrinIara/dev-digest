@@ -82,6 +82,36 @@ export interface ReviewLite {
   findings: FindingLite[];
 }
 
+export interface BlastCallerLite {
+  name: string;
+  file: string;
+  line: number;
+}
+
+export interface BlastDownstreamLite {
+  symbol: string;
+  callers: BlastCallerLite[];
+  endpoints_affected: string[];
+  crons_affected: string[];
+}
+
+export type BlastDegradedReason =
+  | 'flag_off'
+  | 'index_failed'
+  | 'index_partial'
+  | 'repo_too_large'
+  | 'no_data';
+
+export interface BlastLite {
+  changed_symbols: { name: string; file: string; kind: string }[];
+  downstream: BlastDownstreamLite[];
+  summary: string;
+  counts: { symbols: number; callers: number; endpoints: number; crons: number };
+  degraded: boolean;
+  reason: BlastDegradedReason | null;
+  callers_truncated: boolean;
+}
+
 export interface ConventionLite {
   id: string;
   category: ConventionCategory;
@@ -108,6 +138,7 @@ export interface DevDigestApi {
   listRuns(prId: string): Promise<RunLite[]>;
   listReviews(prId: string): Promise<ReviewLite[]>;
   listConventions(repoId: string): Promise<ConventionLite[]>;
+  getBlast(prId: string): Promise<BlastLite>;
 }
 
 /**

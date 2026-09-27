@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach } from 'vitest';
 import { connect } from './helpers/connect.js';
-import { createFakeFetch } from './helpers/fake-api.js';
+import { createFakeFetch, FIXTURE_REPO, FIXTURE_PR, FIXTURE_BLAST, FIXTURE_BLAST_DEGRADED } from './helpers/fake-api.js';
 import { createHttpApi } from '../src/api/client.js';
 import { Resolver } from '../src/domain/resolve.js';
 import type { McpConfig } from '../src/config.js';
@@ -20,24 +20,89 @@ afterEach(async () => {
   connected = undefined;
 });
 
+function textOf(result: Awaited<ReturnType<Connected['client']['callTool']>>): string {
+  return (result.content as Array<{ type: string; text: string }>)[0]!.text;
+}
+
 describe('get_blast_radius', () => {
-  it('returns a non-error not_implemented stub and makes zero API calls', async () => {
-    const { fetch, calls } = createFakeFetch({});
+  it('resolves repo/pr, calls /blast exactly once, and returns the same downstream map', async () => {
+    const { fetch, calls } = createFakeFetch({
+      'GET /repos': { status: 200, body: [FIXTURE_REPO] },
+      [`GET /repos/${FIXTURE_REPO.id}/pulls`]: { status: 200, body: [FIXTURE_PR] },
+      [`GET /pulls/${FIXTURE_PR.id}/blast`]: { status: 200, body: FIXTURE_BLAST },
+    });
     const api = createHttpApi(CONFIG, fetch);
     connected = await connect({ api, config: CONFIG, resolver: new Resolver(api) });
 
     const result = await connected.client.callTool({
       name: 'get_blast_radius',
-      arguments: { repo: 'acme/payments-api', pr: 482 },
+      arguments: { repo: FIXTURE_REPO.full_name, pr: FIXTURE_PR.number },
     });
 
     expect(result.isError).toBeFalsy();
-    const text = (result.content as Array<{ type: string; text: string }>)[0]!.text;
-    expect(text).toContain('Do not retry');
-    expect(text).toContain('get_findings');
-    const payload = JSON.parse(text.split('\n').slice(1).join('\n')) as { status: string };
-    expect(payload.status).toBe('not_implemented');
-    expect(calls).toHaveLength(0);
+    const text = textOf(result);
+    const payload = JSON.parse(text.split('\n').slice(1).join('\n')) as { downstream: unknown };
+    expect(payload.downstream).toEqual(FIXTURE_BLAST.downstream);
+
+    const blastCalls = calls.filter((c) => c.path === `/pulls/${FIXTURE_PR.id}/blast`);
+    expect(blastCalls).toHaveLength(1);
+  });
+
+  it('a degraded response is not an error and the text names the reason', async () => {
+    const { fetch } = createFakeFetch({
+      'GET /repos': { status: 200, body: [FIXTURE_REPO] },
+      [`GET /repos/${FIXTURE_REPO.id}/pulls`]: { status: 200, body: [FIXTURE_PR] },
+      [`GET /pulls/${FIXTURE_PR.id}/blast`]: { status: 200, body: FIXTURE_BLAST_DEGRADED },
+    });
+    const api = createHttpApi(CONFIG, fetch);
+    connected = await connect({ api, config: CONFIG, resolver: new Resolver(api) });
+
+    const result = await connected.client.callTool({
+      name: 'get_blast_radius',
+      arguments: { repo: FIXTURE_REPO.full_name, pr: FIXTURE_PR.number },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(textOf(result)).toContain('Index incomplete (no_data)');
+  });
+
+  it('an unknown PR number fails with a forward-leading message and makes no /blast call', async () => {
+    const { fetch, calls } = createFakeFetch({
+      'GET /repos': { status: 200, body: [FIXTURE_REPO] },
+      [`GET /repos/${FIXTURE_REPO.id}/pulls`]: { status: 200, body: [FIXTURE_PR] },
+    });
+    const api = createHttpApi(CONFIG, fetch);
+    connected = await connect({ api, config: CONFIG, resolver: new Resolver(api) });
+
+    const result = await connected.client.callTool({
+      name: 'get_blast_radius',
+      arguments: { repo: FIXTURE_REPO.full_name, pr: 999 },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('PR #999 not found');
+    expect(calls.some((c) => c.path.endsWith('/blast'))).toBe(false);
+  });
+
+  it('a /blast 404 fails with the mapped API message', async () => {
+    const { fetch } = createFakeFetch({
+      'GET /repos': { status: 200, body: [FIXTURE_REPO] },
+      [`GET /repos/${FIXTURE_REPO.id}/pulls`]: { status: 200, body: [FIXTURE_PR] },
+      [`GET /pulls/${FIXTURE_PR.id}/blast`]: {
+        status: 404,
+        body: { error: { code: 'not_found', message: 'Pull request not found' } },
+      },
+    });
+    const api = createHttpApi(CONFIG, fetch);
+    connected = await connect({ api, config: CONFIG, resolver: new Resolver(api) });
+
+    const result = await connected.client.callTool({
+      name: 'get_blast_radius',
+      arguments: { repo: FIXTURE_REPO.full_name, pr: FIXTURE_PR.number },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('Pull request not found');
   });
 
   it('rejects an invalid repo via schema validation', async () => {

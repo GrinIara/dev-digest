@@ -1,4 +1,7 @@
 {
+  "title": "Blast radius",
+  "errorTitle": "Couldn't load blast radius",
+  "errorBody": "The impact map for this PR could not be loaded.",
   "stat": {
     "symbols": "symbols",
     "callers": "callers",
@@ -11,8 +14,32 @@
   },
   "callerCount": "{count} callers",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
+  "degraded": {
+    "badge": "Incomplete index",
+    "reason": {
+      "flag_off": "repo intel disabled",
+      "index_failed": "indexing failed",
+      "index_partial": "partial index",
+      "repo_too_large": "repo too large to index",
+      "no_data": "repo not indexed yet"
+    }
+  },
+  "truncated": "Showing the top {max} callers",
+  "callerLinkLabel": "Open {file} line {line} on GitHub",
+  "resync": "Resync",
+  "resyncing": "Resyncing…",
+  "toggleSymbol": "Toggle callers of {symbol}",
   "graph": {
     "empty": "No downstream callers to graph.",
-    "ariaLabel": "Blast radius graph"
+    "ariaLabel": "Blast radius graph",
+    "legend": {
+      "changed": "changed symbol",
+      "callers": "callers",
+      "endpoints": "endpoints affected"
+    }
+  },
+  "priorPrs": {
+    "title": "Prior PRs touching these files",
+    "empty": "No prior merged PRs touched these files."
   }
 }

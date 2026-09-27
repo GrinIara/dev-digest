@@ -3,8 +3,9 @@
 A local **stdio MCP server** that lets Claude Code (or any MCP client) drive
 DevDigest: list reviewer agents, run one agent on a PR and get its findings in
 a single call, read a finished run's verdict, read a repo's accepted
-conventions, and call a stable `get_blast_radius` stub (the real
-implementation is later course homework).
+conventions, and get a PR's blast radius (impact map of changed symbols,
+callers, and affected endpoints/crons) straight from the pre-built
+`repo-intel` index.
 
 It is a thin HTTP client over the running `server/` API — no direct DB,
 GitHub, or LLM access, and no import of `server/`'s runtime code. See
@@ -150,7 +151,7 @@ LLM run and is annotated non-idempotent/open-world. Full per-tool spec
 | `run_agent_on_pr(repo, pr, agent)` | Resolves agent/repo/PR, starts **one** review run, polls until done or `DEVDIGEST_RUN_WAIT_MS` elapses, returns the verdict + findings (or a non-error `status:"running"` with a `run_id` to hand to `get_findings`). Never retries the trigger POST. | `GET /agents`, `GET /repos`, `GET /repos/:id/pulls`, `POST /pulls/:id/review`, `GET /pulls/:id/runs` (polled), `GET /pulls/:id/reviews` |
 | `get_findings(repo, pr, run_id?, agent?, min_severity?, max_findings?, response_format?)` | Gets a finished review's verdict/findings — by `run_id`, or the PR's latest review. The documented fallback after a `run_agent_on_pr` timeout. | `GET /repos`, `GET /repos/:id/pulls`, `GET /agents` (if `agent`), `GET /pulls/:id/runs` (if `run_id`), `GET /pulls/:id/reviews` |
 | `get_conventions(repo, category?, max_rules?, response_format?)` | Returns the repo's **accepted** L02 conventions (house rules), never triggers a scan. | `GET /repos`, `GET /repos/:id/conventions` |
-| `get_blast_radius(repo, pr)` | **Stub.** Returns `{status:"not_implemented", repo, pr}` and tells the model not to retry. Makes zero API calls. The real implementation (impact map of changed symbols and downstream callers, backed by `repo-intel`) is L04 homework; this input schema is frozen so the real implementation only has to change the handler body. | none |
+| `get_blast_radius(repo, pr)` | Resolves repo/pr, then reads `GET /pulls/:id/blast` once: the symbols declared in the PR's changed files, their callers as `file:line`, and the HTTP endpoints/crons that may be affected — served from `repo-intel`'s pre-built index (no reparse, no LLM). A degraded/incomplete index is not an error; the summary line names the reason and suggests a resync. | `GET /repos`, `GET /repos/:id/pulls`, `GET /pulls/:id/blast` |
 
 Every response is a short summary line plus compact (non-pretty-printed)
 JSON, capped at 24,000 characters. Finding and convention text originates

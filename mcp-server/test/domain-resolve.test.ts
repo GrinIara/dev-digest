@@ -28,6 +28,7 @@ function fakeApi(overrides: Partial<DevDigestApi> = {}): DevDigestApi {
     listRuns: vi.fn(),
     listReviews: vi.fn(),
     listConventions: vi.fn(),
+    getBlast: vi.fn(),
     ...overrides,
   };
 }
