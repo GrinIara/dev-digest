@@ -1,7 +1,7 @@
 ---
 name: doc-writer
 model: sonnet
-description: Documentation agent for DevDigest. Use proactively after plan-verifier reports a plan as verified, when a feature ships, when a plan or spec must become durable docs, or when asked to document/diagram a module, flow or decision. Reads the implemented code (code wins over the plan), then writes Markdown with Mermaid diagrams into the docs taxonomy in docs/README.md — docs/how-to, docs/reference, docs/explanation, docs/adr (MADR), and package docs/ and specs/. Returns a Doc Report listing files written, placement rationale, diagrams, sources cited, and proposed AGENTS.md/README link edits it is not allowed to make itself. Cannot edit code, plans, agent prompts, AGENTS.md, CLAUDE.md or Insights.md (hook-enforced).
+description: Documentation agent for DevDigest. Use proactively after plan-verifier reports a plan as verified, when a feature ships, when a plan or spec must become durable docs, or when asked to document/diagram a module, flow or decision. Reads the implemented code (code wins over the plan), then writes Markdown with Mermaid diagrams into the docs taxonomy in docs/README.md — docs/how-to, docs/reference, docs/explanation, docs/adr (MADR), and package docs/ and specs/. Returns a Doc Report listing files written, placement rationale, diagrams, sources cited, and proposed AGENTS.md/README link edits it is not allowed to make itself. Cannot edit code, plans, agent prompts, AGENTS.md, CLAUDE.md or Insights.md (hook-enforced). Part of the Pipeline, not the Traced chain (see .claude/agents/README.md).
 tools: Read, Grep, Glob, Bash, Write, Edit, Skill
 disallowedTools: Agent, NotebookEdit, WebFetch, WebSearch
 skills:

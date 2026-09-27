@@ -26,6 +26,125 @@ flowchart LR
 
 Sequential, in the current branch, no worktrees — except that `architecture-reviewer` and `security-reviewer` are both read-only and may run in parallel. `brainstorm` is optional: use it when the request has more than one reasonable approach; skip it when the design is already fixed. The four evaluators (test-writer, architecture-reviewer, security-reviewer, plan-verifier) feed findings back to the implementer — an evaluator-optimizer loop. The user commits — no agent does.
 
+## Traced chain
+
+A fixed, narrower chain for a feature whose design is chosen via `brainstorm`, which ends with a per-call cost/context trace. Differs from the Pipeline: no `security-reviewer`, no `doc-writer`, `test-writer` runs **in parallel** with `architecture-reviewer` (not before it), and a trace file is written.
+
+```mermaid
+flowchart LR
+  U0((user request)) --> B[brainstorm]
+  B -->|Options Report| G1{G1: user picks option}
+  G1 --> P[planner]
+  P -.->|nested| RX[researcher / Explore]
+  P -->|docs/plans/*.md| G2{G2: blocking questions?}
+  G2 -->|none| I[implementer]
+  I -->|Implementation Report| G3{G3: typecheck/test/lint green}
+  G3 --> AR[architecture-reviewer]
+  G3 --> TW[test-writer]
+  AR -->|§8 Handoff summary| J{AR + G4 pass?}
+  TW -->|§10 Handoff summary| J
+  J -->|yes| PV[plan-verifier]
+  PV --> G5{G5: all Met?}
+  G5 -->|yes| TR[main session writes *.trace.md]
+  TR --> U1((user reads the trace))
+  J -.->|verbatim handoff, re-run only that evaluator| I
+  G5 -.->|verbatim §7 handoff, re-run plan-verifier| I
+```
+
+**Orchestration**
+
+- The main session calls every agent with the `Agent` tool. No Workflow tool, no dynamic workflow.
+- Sequential, except step 4: `architecture-reviewer` and `test-writer` are two `Agent` calls in one message.
+- Nested calls (planner → `researcher` / `Explore`) happen inside the planner and are traced too.
+- Fix-loop calls are **new** `Agent` calls (fresh context, own agent id, own trace row), not `SendMessage` continuations.
+- `security-reviewer` and `doc-writer` are not part of this chain; run them separately afterwards if the change needs them. Nobody commits during the run — the user commits.
+
+**Before the run**: `git status --porcelain` must be empty (the user commits unrelated work first). Record `git rev-parse HEAD` as the **base sha** and the main session id (the JSONL name under the config dir, see Trace).
+
+**Diff range**: every `architecture-reviewer`, `test-writer` and `plan-verifier` prompt gets the plan path, the base sha, and the file list from the Implementation Report §2 Tasks table. Reviewers diff `git diff <base-sha> -- <files>` plus `git status --porcelain` for untracked files — don't rely on the merge-base-with-`main` default. `architecture-reviewer` therefore never sees `test-writer`'s tests; that is by design.
+
+**Gates**
+
+| Gate | After | Pass evidence | On fail |
+|---|---|---|---|
+| G1 | brainstorm | The user picks an option and answers its questions | Ask the user; pause |
+| G2 | planner | No blocking open question in the plan | Ask the user; pause |
+| G3 | implementer | typecheck/test/lint green, command + output tail in the Implementation Report | Re-call implementer with the failing command tail |
+| G4 | test-writer | Status `done`, both runs green | `red-product-bug` → relay test-writer §10 Handoff summary verbatim to implementer, re-run **only** test-writer |
+| — | architecture-reviewer | No `blocking` verdict, no critical/major finding | Relay its §8 Handoff summary verbatim to implementer, re-run **only** architecture-reviewer |
+| G5 | plan-verifier | Every matrix row Met | Relay its §7 Handoff summary verbatim to implementer, re-run **only** plan-verifier. Unverifiable rows go to the user, not into the loop |
+
+Cap: 2 fix iterations per evaluator, then the user decides. Re-running only the producing evaluator is safe because the implementer's own Done-condition re-runs the whole package suite, including test-writer's new tests.
+
+**Trace**
+
+- Path: `docs/plans/<YYYY-MM-DD>-<slug>.trace.md`, same date + slug as the plan; if it exists, suffix `-run2` — never overwrite. Committed with the feature.
+- Written by the main session after the last gate. `implementer` and `plan-verifier` ignore `*.trace.md` when falling back to "the newest plan".
+- Transcripts: `<config dir>/projects/<cwd with / → ->/<main session id>/subagents/agent-<agentId>.jsonl` plus `agent-<agentId>.meta.json` (`agentType`, `toolUseId`, `spawnDepth`: 1 = called by the main session, 2 = nested). The config dir is `~/.claude` by default (or whatever `CLAUDE_CONFIG_DIR` points to). The `agentId` comes from the `Agent` tool result.
+- Model: frontmatter → `message.model` in the subagent JSONL → `toolUseResult.resolvedModel` of the `Agent` call in the main-session JSONL (e.g. `claude-opus-5-5[1m]`). Built-in agents (`Explore`) have no frontmatter — record "built-in".
+- Duration: from the task-completion notification (`duration_ms`); otherwise last − first `timestamp` in the JSONL, labelled as such.
+- Cost: JSONL usage × prices from the official Anthropic pricing page **fetched during the run** — record the URL and retrieval time; never from memory. Transcript cost is an estimate; cross-check with `/cost` (sum of subagent costs ≤ session total, the difference is the main session's own orchestration). If `/cost` shows no dollar figure (subscription), record that and compare tokens instead.
+
+Usage per subagent transcript (one assistant message spans several JSONL lines sharing `message.id` with repeated usage, so de-duplicate before summing; cache writes are split into 5-minute and 1-hour tokens, priced differently):
+
+```bash
+jq -s 'map(select(.type=="assistant" and .message.usage)) | group_by(.message.id) | map(last) | {models: (map(.message.model)|unique), in: (map(.message.usage.input_tokens)|add), out: (map(.message.usage.output_tokens)|add), cache_read: (map(.message.usage.cache_read_input_tokens // 0)|add), write_5m: (map(.message.usage.cache_creation.ephemeral_5m_input_tokens // 0)|add), write_1h: (map(.message.usage.cache_creation.ephemeral_1h_input_tokens // 0)|add), start: (map(.timestamp)|min), end: (map(.timestamp)|max)}' agent-<id>.jsonl
+```
+
+Cost = in × input + out × output + cache_read × cache-read + write_5m × 5m-write + write_1h × 1h-write (all $/MTok from the fetched page; apply a long-context rate if the page lists one and `resolvedModel` carries `[1m]` with prompts above the threshold).
+
+Trace template:
+
+````markdown
+# Run trace — <feature title>
+Date: YYYY-MM-DD · Branch: <branch> · Base sha: <sha> · Plan: `docs/plans/<date>-<slug>.md`
+Main session: <session id> · Transcripts: `<config dir>/projects/<cwd-slug>/<session id>/subagents/`
+Prices: <official pricing URL> · retrieved YYYY-MM-DD HH:MM
+
+| Model | Input $/MTok | Output $/MTok | Cache read $/MTok | Cache write 5m $/MTok | Cache write 1h $/MTok |
+|---|---|---|---|---|---|
+
+## 1. Pre-run
+- `git status --porcelain`: <empty>
+- Base sha: <sha>
+
+## 2. Calls
+| # | Parent | Agent | Model: frontmatter → transcript | Agent id | Input artifacts | Output artifacts | Gate | In | Out | Cache read | Cache write 5m / 1h | Duration | Cost $ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | main | brainstorm | opus → <message.model> | <id> | user request | Options Report | G1: user chose <option> | | | | | | |
+| 2 | main | planner | opus → … | <id> | chosen option + Options Report handoff (verbatim) | `docs/plans/<…>.md` | G2: <none / questions> | | | | | | |
+| 2.1 | #2 | Explore | built-in → … | <id> | <question> | findings | — | | | | | | |
+| 3 | main | implementer | sonnet → … | <id> | plan path, base sha | diff (files), Implementation Report | G3: <commands green> | | | | | | |
+| 4a | main | architecture-reviewer | opus → … | <id> | plan path, base sha, file list | Architecture Review Report (§8) | <verdict> | | | | | | |
+| 4b | main | test-writer | sonnet → … | <id> | plan path, base sha, task IDs | test files, Test Report (§10) | G4: <status> | | | | | | |
+| 5 | main | plan-verifier | opus → … | <id> | plan path, base sha, file list | Verification Report (§7) | G5: <counts> | | | | | | |
+
+Parent: `main` or the parent row #. Parallel calls share a number with a/b. Fix-loop calls get their own rows.
+
+## 3. Gates & fix loops
+| Gate | Call # | Evidence (command / report section) | Outcome | Iteration |
+|---|---|---|---|---|
+
+## 4. Totals & cross-check
+- Per model: tokens and cost
+- Sum of subagent costs: $<x> · `/cost` session total: $<y> · difference (main session + rounding): $<y−x>
+- Model mismatches (frontmatter vs transcript vs `resolvedModel`): <none / list>
+
+## 5. Method
+- Recipe run (verbatim command), de-dup rule, duration source
+- Known uncertainty: <e.g. per-message output_tokens in JSONL vs `/cost`>
+
+## 6. Relayed handoffs (verbatim)
+- Call #<n> → implementer call #<m>: <quoted Handoff summary lines>
+
+## 7. Reading the trace (user)
+- Most expensive call and why:
+- Fix iterations per evaluator:
+- Model surprises:
+````
+
+**Read the trace** — the last step is the user's: which call cost most and why, how many fix iterations each evaluator caused, and whether any model in the transcripts differs from the frontmatter.
+
 ## Catalog
 
 | Agent | Model | Responsibility | Not responsible for |
@@ -68,7 +187,7 @@ The Bash guards are keyword-based guardrails, not a sandbox. `readonly-guard.sh`
 | brainstorm | A problem or feature request with more than one reasonable approach | Options Report in chat (problem, what exists, 2–4 options, comparison table, recommendation, questions for the user, handoff to planner) |
 | planner | Feature/fix request (optionally the chosen option from `brainstorm`); reads root `CLAUDE.md`, package `AGENTS.md` + `Insights.md`, `.claude/skills/README.md`, code | `docs/plans/<YYYY-MM-DD>-<slug>.md` + chat summary (plan path, mandatory skills loaded, blocking questions, red flags) |
 | implementer | A plan in `docs/plans/` (optionally specific task IDs) | Code changes in the working tree (uncommitted); optional append to a package `Insights.md`; Implementation Report in chat (per-task status, deviations, skills loaded, verification evidence, handoff to reviewers) |
-| test-writer | A plan (+ task IDs) or an explicit target + behaviours | Test files in the working tree; Test Report (status, tests table, skills loaded, command evidence, failure-mode statements, coverage gaps, suspected bugs, diff self-check, insights) |
+| test-writer | A plan (+ task IDs) or an explicit target + behaviours | Test files in the working tree; Test Report (status, tests table, skills loaded, command evidence, failure-mode statements, coverage gaps, suspected bugs, diff self-check, insights, handoff summary) |
 | architecture-reviewer | Paths, a diff range or a plan; default: diff vs merge-base with `main` | Architecture Review Report (scope, verdict, findings with evidence, checks run clean, known tradeoffs, out of scope, fitness-function candidates, compact handoff summary) |
 | security-reviewer | Paths, a diff range or a plan; default: diff vs merge-base with `main` | Security Review Report (scope, verdict, findings with source → sink evidence and exploit scenario, checks run clean, mitigations observed, out of scope, handoff summary) |
 | plan-verifier | A plan path (+ optional agent reports, treated as claims) | Verification Report (plan & baseline, traceability matrix, command evidence, scope compliance, how to verify the Unverifiable, out-of-scope observations, compact handoff summary) |
@@ -135,4 +254,4 @@ Repo-derived rules (not from external sources): forbidden files, migrations via 
 - Grant the smallest tool set; anything a tool list can't express (paths, command patterns, delegation targets) goes in a hook under `.claude/hooks/`.
 - After any guard edit, run `bash .claude/hooks/tests/run-guard-tests.sh` and add a case for the new rule.
 - Changing the skill sets or plan template → update `planner.md` and `implementer.md` together, then this README.
-- New agents appear after `/agents` reload or a session restart.
+- New or changed agents load on the next session start (the `/agents` wizard has been removed); check that they appear in the session's agent list.

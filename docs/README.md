@@ -11,7 +11,7 @@ Where DevDigest documentation lives and which kind of page goes where. The struc
 | Reference — exact contracts, config | Per-package contracts in `<package>/specs/<feature>.md` (append dated sections after shipping). Cross-package reference in `docs/reference/<topic>.md`. Prompt originals in `docs/agent-prompts/` (not doc-writer-editable). | [`server/specs/review-flow.md`](../server/specs/review-flow.md), [`reviewer-core/specs/review-contract.md`](../reviewer-core/specs/review-contract.md) | doc-writer (specs, reference) |
 | Explanation — architecture, features, "why" | Package internals in `<package>/docs/<topic>.md`. Cross-package features in `docs/explanation/<feature>.md` (C4-style context/container views as flowcharts; arc42-inspired sections: context, building blocks, runtime, decisions). | [`server/docs/architecture.md`](../server/docs/architecture.md), [`client/docs/ui-architecture.md`](../client/docs/ui-architecture.md) | doc-writer |
 | Decision records | `docs/adr/NNNN-kebab-title.md`, MADR format. Immutable once `accepted`; supersede with a new ADR. | [ADR index](adr/README.md) | doc-writer, human-approved |
-| Plans and specs in flight (not docs) | `docs/plans/` (planner output); existing root specs stay where they are | [`skills-lab-spec.md`](skills-lab-spec.md) | planner, humans |
+| Plans and specs in flight (not docs) | `docs/plans/` (planner output) + `docs/plans/*.trace.md` (run traces of the [Traced chain](../.claude/agents/README.md#traced-chain), next to their plan); existing root specs stay where they are | [`skills-lab-spec.md`](skills-lab-spec.md) | planner, main session (traces), humans |
 
 Folders such as `docs/how-to/` are created when their first page arrives, not as empty scaffolding.
 
@@ -49,7 +49,7 @@ Use Mermaid with plain `flowchart`, `sequenceDiagram`, `erDiagram` or `stateDiag
 - [`agent-prompts/`](agent-prompts/README.md) — reviewable originals of the reviewer agents' DB-stored system prompts, plus [model-choice notes](agent-prompts/choosing-a-model.md). Edit together with `PUT /agents/:id`.
 - [`architecture-improvement-plan.md`](architecture-improvement-plan.md) — 2026-09-20 cross-package architecture review; open findings and accepted tradeoffs.
 - [`skills-lab-spec.md`](skills-lab-spec.md) — 2026-09-21 spec for the Skills Lab feature and the `pr-self-review` skill.
-- [`plans/`](plans/) — Development Plans written by the `planner` agent.
+- [`plans/`](plans/) — Development Plans written by the `planner` agent, plus `*.trace.md` run traces written by the main session after a Traced-chain run.
 - [`adr/`](adr/README.md) — architecture decision records.
 
 **Repo root**
