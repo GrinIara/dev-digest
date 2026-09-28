@@ -44,27 +44,25 @@ export function indexableFiles(paths: string[]): string[] {
  *
  * A3 — the grouping key is the symbol *name* (`viaSymbol`), because that's all
  * the facade provides: two changed files that happen to declare the same name
- * merge into one group, and the declaring-file filter below uses the set of
- * ALL files that declare that name (not just the one file that produced the
- * caller). This is accepted (plan A3), not a bug.
+ * merge into one group. This is accepted (plan A3), not a bug.
  *
- * Self-caller filter is DEFENSIVE: `repo-intel/repository.ts`'s persistent
- * `getResolvedCallers` does not exclude a reference living in the same file
- * that declares the symbol (unlike the ripgrep fallback in
- * `repo-intel/service.ts`, which explicitly skips `r.fromPath === sym.file`),
- * so a changed symbol can otherwise show up as its own caller.
+ * No self-caller filter here: the declaring file never appears among its own
+ * symbol's callers because `BlastResult.callers` is already guaranteed not to
+ * contain one, upstream of this function. On the persistent path,
+ * `repo-intel/repository.ts`'s `getResolvedCallers` only returns references
+ * whose `decl_file` was set by `resolveReferences` through a real import edge
+ * (`file_edges.from_file = r.from_path → to_file`) — a file never has an
+ * import edge to itself, so a same-file reference's `decl_file` stays NULL
+ * (unresolved) and is never selected. On the ripgrep fallback,
+ * `repo-intel/service.ts` explicitly skips `r.fromPath === sym.file`. A
+ * previous version of this function re-filtered self-callers defensively,
+ * keyed by symbol *name* — which was also subtly wrong: it could drop a
+ * legit caller in changed file A that imports a same-named symbol from
+ * changed file B. See `server/Insights.md` for the correction.
  */
 export function groupDownstream(result: BlastResult): DownstreamImpact[] {
-  const declFilesByName = new Map<string, Set<string>>();
-  for (const cs of result.changedSymbols) {
-    const files = declFilesByName.get(cs.name) ?? new Set<string>();
-    files.add(cs.file);
-    declFilesByName.set(cs.name, files);
-  }
-
   const grouped = new Map<string, BlastCallerRow[]>();
   for (const c of result.callers) {
-    if (declFilesByName.get(c.viaSymbol)?.has(c.file)) continue;
     const arr = grouped.get(c.viaSymbol);
     if (arr) arr.push(c);
     else grouped.set(c.viaSymbol, [c]);

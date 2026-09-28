@@ -32,8 +32,7 @@ emits JS: run as TypeScript source via `tsx`, consistent with
 - `src/tools/*.ts` — the five MCP tools (delivery layer: arg schemas, result shaping only)
 - `src/server.ts` — `createServer(deps)`, server `instructions`, tool registration; re-exports `ServerDeps` from `src/tools/deps.ts` for existing consumers
 - `src/index.ts` — stdio composition root
-- `bin/start.sh` — cwd-independent launcher, used by `mcp.json` and `claude mcp add`
-- `mcp.json` — opt-in Claude Code config (`claude --mcp-config mcp-server/mcp.json`)
+- `bin/start.sh` — cwd-independent launcher, used by the root `/.mcp.json` and `claude mcp add`
 
 ## Conventions (non-default)
 - Layering is `tools/*` → `domain/*` → `domain/ports.ts` ← `api/client.ts`. `domain/*` never imports the MCP SDK or `fetch` (global); `tools/*` never imports `src/api/*`, `../server.js` (the composition root — inject `ServerDeps` from `./deps.js` instead) or `fetch` (global); only `src/index.ts` wires `createHttpApi` into `createServer`. Lint-enforced (`no-restricted-imports` + `no-restricted-globals` in `eslint.config.mjs`, one rule set per folder).
@@ -54,7 +53,7 @@ emits JS: run as TypeScript source via `tsx`, consistent with
 - The API must be running (`./scripts/dev.sh`) for every tool — none of the five is a no-op stub. Every network-error message names `./scripts/dev.sh`.
 - `GET /repos/:id/pulls` syncs from GitHub first when a token is configured, so it is slow — `Resolver` caches `(repo, number) → pr_id` for the process lifetime.
 - A run can reach a terminal status without a `run_traces` row (boot reaper, orphan cancel — `server/src/modules/reviews/service.ts:90-100`), so completion is detected by polling `GET /pulls/:id/runs` (`RunSummary.status`), never `/runs/:id/trace`.
-- `mcp-server/mcp.json`'s per-server `"timeout"` (ms, hard wall-clock, overrides `MCP_TOOL_TIMEOUT` for this server) is a different knob from `MCP_TOOL_TIMEOUT`/`MCP_TIMEOUT` (Claude Code's own env, not this package's `env` block, and not read from `mcp.json`'s `env`). Progress notifications never extend either timeout. See `mcp-server/README.md` for the layering and `Insights.md` for what was verified against the installed CLI.
+- The root `/.mcp.json`'s per-server `"timeout"` (ms, hard wall-clock, overrides `MCP_TOOL_TIMEOUT` for this server) is a different knob from `MCP_TOOL_TIMEOUT`/`MCP_TIMEOUT` (Claude Code's own env, not this package's `env` block, and not read from `/.mcp.json`'s `env`). Progress notifications never extend either timeout. See `mcp-server/README.md` for the layering and `Insights.md` for what was verified against the installed CLI.
 - The global API rate limit (10/min on the review-trigger route, 120/min overall) is shared with the web UI's own polling — `wait.ts` backs off ×2 (capped at 10s) on a transient 429/5xx during polling rather than failing.
 
 ## Do not touch

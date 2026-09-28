@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatAgents, formatBlast, formatConventions, formatReview } from '../src/domain/format.js';
+import {
+  formatAgents,
+  formatBlast,
+  formatConventions,
+  formatFindingsList,
+  formatReview,
+} from '../src/domain/format.js';
 import type { BlastLite, FindingLite, ReviewLite, ConventionLite, AgentLite } from '../src/domain/ports.js';
 import { BLAST_UNTRUSTED_NOTE, UNTRUSTED_NOTE, MAX_RESPONSE_CHARS } from '../src/domain/tool-result.js';
 
@@ -122,6 +128,96 @@ describe('formatReview', () => {
   it('always appends the untrusted-content note', () => {
     const { summary } = formatReview(REVIEW, { runId: 'r', repo: 'acme/x', pr: 1, agent: 'a' });
     expect(summary).toContain(UNTRUSTED_NOTE);
+  });
+});
+
+describe('formatFindingsList', () => {
+  const SECOND_REVIEW: ReviewLite = {
+    id: 'review-2',
+    run_id: 'run-2',
+    agent_id: 'agent-2',
+    agent_name: 'Security Reviewer',
+    kind: 'review',
+    verdict: 'approve',
+    summary: 'Looks fine.',
+    score: 90,
+    created_at: '2026-09-19T10:00:00.000Z',
+    findings: [finding({ severity: 'WARNING', file: 'c.ts', title: 'nit' })],
+  };
+
+  it('one review per agent, sorted most-severe (CRITICAL count) first, not alphabetically', () => {
+    // REVIEW's agent ('General Reviewer') has 1 CRITICAL; SECOND_REVIEW's
+    // agent ('Security Reviewer') sorts first alphabetically but has none —
+    // it must still come second.
+    const { payload } = formatFindingsList([REVIEW, SECOND_REVIEW], { repo: 'acme/x', pr: 1 });
+    expect(payload.reviews.map((r) => r.agent)).toEqual(['General Reviewer', 'Security Reviewer']);
+    expect(payload.total_findings).toBe(4);
+    expect(payload.counts).toEqual({ CRITICAL: 1, WARNING: 2, SUGGESTION: 1 });
+  });
+
+  it('min_severity filters findings in every review; total_findings counts after filtering', () => {
+    const { payload } = formatFindingsList([REVIEW, SECOND_REVIEW], {
+      repo: 'acme/x',
+      pr: 1,
+      minSeverity: 'CRITICAL',
+    });
+    // REVIEW keeps its 1 CRITICAL; SECOND_REVIEW's lone WARNING is filtered out.
+    expect(payload.total_findings).toBe(1);
+    const secondReview = payload.reviews.find((r) => r.agent === 'Security Reviewer');
+    expect(secondReview?.findings_count).toBe(0);
+    expect(secondReview?.findings).toEqual([]);
+  });
+
+  it('max_findings caps findings across the whole payload, keeping severity ordering, and sets truncated', () => {
+    const { payload } = formatFindingsList([REVIEW, SECOND_REVIEW], {
+      repo: 'acme/x',
+      pr: 1,
+      maxFindings: 1,
+    });
+    const totalRendered = payload.reviews.reduce((sum, r) => sum + r.findings.length, 0);
+    expect(totalRendered).toBe(1);
+    expect(payload.truncated).toBe(true);
+    // The single kept finding comes from the more severe (first-sorted) review.
+    expect(payload.reviews[0]?.findings[0]?.severity).toBe('CRITICAL');
+    // findings_count still reports each review's true total, unaffected by the cap.
+    expect(payload.reviews.find((r) => r.agent === 'General Reviewer')?.findings_count).toBe(3);
+  });
+
+  it('enforces the MAX_RESPONSE_CHARS budget by shrinking findings, never dropping a review', () => {
+    const manyFindingsReview: ReviewLite = {
+      ...REVIEW,
+      findings: Array.from({ length: 200 }, (_, i) =>
+        finding({ severity: 'WARNING', file: `f${i}.ts`, rationale: 'x'.repeat(2_000) }),
+      ),
+    };
+    // maxFindings deliberately way above the count involved — the truncation
+    // under test here is the char-budget one, not the max_findings cap.
+    const { payload } = formatFindingsList([manyFindingsReview, SECOND_REVIEW], {
+      repo: 'acme/x',
+      pr: 1,
+      maxFindings: 1_000,
+    });
+    const rendered = JSON.stringify(payload);
+    expect(rendered.length).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
+    expect(payload.truncated).toBe(true);
+    expect(payload.reviews).toHaveLength(2);
+    // findings_count still reports the true (pre-budget-cap) total.
+    expect(payload.reviews.find((r) => r.agent === 'General Reviewer')?.findings_count).toBe(200);
+  });
+
+  it('summary line names the agent count, total findings, and the untrusted-content note', () => {
+    const { summary } = formatFindingsList([REVIEW, SECOND_REVIEW], { repo: 'acme/x', pr: 7 });
+    expect(summary).toContain('2 agent(s) reviewed acme/x#7');
+    expect(summary).toContain('4 finding(s)');
+    expect(summary).toContain('1 CRITICAL');
+    expect(summary).toContain(UNTRUSTED_NOTE);
+  });
+
+  it('handles an empty review list without crashing', () => {
+    const { payload, summary } = formatFindingsList([], { repo: 'acme/x', pr: 1 });
+    expect(payload.reviews).toEqual([]);
+    expect(payload.total_findings).toBe(0);
+    expect(summary).toContain('0 agent(s)');
   });
 });
 

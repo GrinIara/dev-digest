@@ -79,36 +79,6 @@ describe('blast/helpers — groupDownstream', () => {
     expect(rateGroup.crons_affected).toEqual([]);
   });
 
-  it('drops a caller whose file is the declaring file of its viaSymbol (defensive self-caller filter)', () => {
-    const result: BlastResult = {
-      changedSymbols: [{ file: 'src/lib/rate.ts', name: 'rateLimit', kind: 'function' }],
-      callers: [
-        // Self-reference: repo-intel's persistent path doesn't exclude this.
-        { file: 'src/lib/rate.ts', symbol: 'rateLimit', viaSymbol: 'rateLimit', line: 5, rank: 99 },
-      ],
-      impactedEndpoints: [],
-      degraded: false,
-    };
-    expect(groupDownstream(result)).toEqual([]);
-  });
-
-  it('keeps a real caller alongside a filtered self-caller for the same symbol', () => {
-    const result: BlastResult = {
-      changedSymbols: [{ file: 'src/lib/rate.ts', name: 'rateLimit', kind: 'function' }],
-      callers: [
-        { file: 'src/lib/rate.ts', symbol: 'rateLimit', viaSymbol: 'rateLimit', line: 5, rank: 99 },
-        { file: 'src/api/public/index.ts', symbol: 'publicRouter', viaSymbol: 'rateLimit', line: 23, rank: 80 },
-      ],
-      impactedEndpoints: [],
-      degraded: false,
-    };
-    const downstream = groupDownstream(result);
-    expect(downstream).toHaveLength(1);
-    expect(downstream[0]!.callers).toEqual([
-      { name: 'publicRouter', file: 'src/api/public/index.ts', line: 23 },
-    ]);
-  });
-
   it('missing factsByFile yields empty endpoints and crons', () => {
     const result: BlastResult = {
       changedSymbols: [{ file: 'src/lib/rate.ts', name: 'rateLimit', kind: 'function' }],

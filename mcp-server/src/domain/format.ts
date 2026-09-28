@@ -172,6 +172,191 @@ function buildReviewSummaryLine(payload: FormattedReviewPayload, opts: FormatRev
   return line;
 }
 
+// ---- Findings across all agents (get_findings without run_id) ------------
+
+export interface AgentReviewSummary {
+  agent: string;
+  run_id: string;
+  verdict: Verdict | null;
+  score: number | null;
+  created_at: string;
+  /** Count of this review's findings after `minSeverity` filtering — the
+   * true total for this agent, unaffected by `maxFindings`/the char budget
+   * (which only ever shrink the `findings` array below, per `truncated`). */
+  findings_count: number;
+  findings: ConciseFinding[];
+}
+
+export interface FormatFindingsListOptions {
+  minSeverity?: Severity;
+  maxFindings?: number;
+  detailed?: boolean;
+  repo: string;
+  pr: number;
+}
+
+export interface FormattedFindingsListPayload {
+  repo: string;
+  pr: number;
+  /** Total findings across every listed review, after `minSeverity`
+   * filtering, before any `maxFindings`/char-budget truncation. */
+  total_findings: number;
+  counts: SeverityCounts;
+  reviews: AgentReviewSummary[];
+  truncated: boolean;
+}
+
+export interface FormatFindingsListResult {
+  payload: FormattedFindingsListPayload;
+  summary: string;
+}
+
+interface PreparedAgentReview {
+  agent: string;
+  run_id: string;
+  verdict: Verdict | null;
+  score: number | null;
+  created_at: string;
+  findings_count: number;
+  sortedFindings: FindingLite[];
+  severityCounts: SeverityCounts;
+}
+
+/**
+ * Shapes one review-per-agent (the caller has already picked, per agent, the
+ * single latest `kind === 'review'` review, and applied any `agent` filter)
+ * into `get_findings`' no-`run_id` payload: `{ repo, pr, total_findings,
+ * counts, reviews: [...] }`. Reviews are sorted most-severe-first — by
+ * (filtered) CRITICAL count desc, then WARNING desc, then SUGGESTION desc,
+ * tie-broken by agent name ascending — so the agent with the most serious
+ * findings leads the list. `maxFindings` (default 20) is a budget shared
+ * across every review's `findings`, allocated in that same sorted order and
+ * keeping each review's own severity ordering intact; `total_findings` and
+ * each review's `findings_count` are computed before that allocation, so
+ * narrowing `max_findings` never changes the totals the model sees — only
+ * `truncated` flips to `true` and fewer findings render. The
+ * `MAX_RESPONSE_CHARS` budget (`fitsBudget`) is enforced after that by
+ * trimming trailing findings from the least-severe review first — reviews
+ * themselves are never dropped, only shrunk.
+ */
+export function formatFindingsList(
+  reviews: ReviewLite[],
+  opts: FormatFindingsListOptions,
+): FormatFindingsListResult {
+  const maxFindings = opts.maxFindings ?? 20;
+  const detailed = opts.detailed ?? false;
+
+  const prepared: PreparedAgentReview[] = reviews.map((r) => {
+    let matched = r.findings;
+    if (opts.minSeverity) {
+      const threshold = SEVERITY_RANK[opts.minSeverity];
+      matched = matched.filter((f) => SEVERITY_RANK[f.severity] <= threshold);
+    }
+    const sortedFindings = sortFindings(matched);
+    return {
+      agent: r.agent_name ?? 'unknown',
+      run_id: r.run_id ?? '',
+      verdict: r.verdict,
+      score: r.score,
+      created_at: r.created_at,
+      findings_count: sortedFindings.length,
+      sortedFindings,
+      severityCounts: tallyBySeverity(sortedFindings),
+    };
+  });
+
+  prepared.sort((a, b) => {
+    if (b.severityCounts.CRITICAL !== a.severityCounts.CRITICAL) {
+      return b.severityCounts.CRITICAL - a.severityCounts.CRITICAL;
+    }
+    if (b.severityCounts.WARNING !== a.severityCounts.WARNING) {
+      return b.severityCounts.WARNING - a.severityCounts.WARNING;
+    }
+    if (b.severityCounts.SUGGESTION !== a.severityCounts.SUGGESTION) {
+      return b.severityCounts.SUGGESTION - a.severityCounts.SUGGESTION;
+    }
+    return a.agent.localeCompare(b.agent);
+  });
+
+  const totalFindings = prepared.reduce((sum, r) => sum + r.findings_count, 0);
+  const counts: SeverityCounts = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
+  for (const r of prepared) {
+    counts.CRITICAL += r.severityCounts.CRITICAL;
+    counts.WARNING += r.severityCounts.WARNING;
+    counts.SUGGESTION += r.severityCounts.SUGGESTION;
+  }
+
+  // Cross-review cap: allocate maxFindings across reviews in sorted order,
+  // keeping each review's own severity ordering intact.
+  let budgetLeft = maxFindings;
+  let truncated = false;
+  const kept: FindingLite[][] = prepared.map((r) => {
+    const take = Math.min(r.sortedFindings.length, Math.max(0, budgetLeft));
+    if (take < r.sortedFindings.length) truncated = true;
+    budgetLeft -= take;
+    return r.sortedFindings.slice(0, take);
+  });
+
+  const buildPayload = (): FormattedFindingsListPayload => ({
+    repo: opts.repo,
+    pr: opts.pr,
+    total_findings: totalFindings,
+    counts,
+    reviews: prepared.map((r, i) => ({
+      agent: r.agent,
+      run_id: r.run_id,
+      verdict: r.verdict,
+      score: r.score,
+      created_at: r.created_at,
+      findings_count: r.findings_count,
+      findings: kept[i]!.map((f) => toConciseFinding(f, detailed)),
+    })),
+    truncated,
+  });
+
+  let payload = buildPayload();
+  // Enforce the char cap by shrinking findings — never dropping a whole
+  // review — trimming the last finding off the last (least-severe) review
+  // that still has any, working backward, until the payload fits.
+  while (!fitsBudget(payload)) {
+    let trimmedAny = false;
+    for (let i = kept.length - 1; i >= 0; i--) {
+      if (kept[i]!.length > 0) {
+        kept[i] = kept[i]!.slice(0, -1);
+        truncated = true;
+        trimmedAny = true;
+        break;
+      }
+    }
+    if (!trimmedAny) break; // nothing left to trim (shouldn't happen in practice)
+    payload = buildPayload();
+  }
+
+  const summary = buildFindingsListSummaryLine(payload, opts);
+  return { payload, summary };
+}
+
+function buildFindingsListSummaryLine(
+  payload: FormattedFindingsListPayload,
+  opts: FormatFindingsListOptions,
+): string {
+  const n = payload.reviews.length;
+  let line = `${n} agent(s) reviewed ${opts.repo}#${opts.pr}: ${payload.total_findings} finding(s)`;
+  const bySeverity: string[] = [];
+  if (payload.counts.CRITICAL > 0) bySeverity.push(`${payload.counts.CRITICAL} CRITICAL`);
+  if (payload.counts.WARNING > 0) bySeverity.push(`${payload.counts.WARNING} WARNING`);
+  if (payload.counts.SUGGESTION > 0) bySeverity.push(`${payload.counts.SUGGESTION} SUGGESTION`);
+  if (bySeverity.length > 0) line += ` (${bySeverity.join(', ')})`;
+  line += '.';
+  if (payload.truncated) {
+    line +=
+      ` Some findings omitted; call get_findings with repo=${opts.repo}, pr=${opts.pr}, ` +
+      `a run_id for one agent's full review, or a higher min_severity / larger max_findings (up to 50).`;
+  }
+  line += ` ${UNTRUSTED_NOTE}`;
+  return line;
+}
+
 // ---- Conventions -----------------------------------------------------
 
 export interface ConciseConvention {

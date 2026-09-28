@@ -2,14 +2,17 @@
  * GET /pulls/:id/blast — integration test (Testcontainers pg). Exercises the
  * real repository/service/route wiring against a hand-seeded repo-intel
  * index: workspace scoping, the persistent-index happy path (≥2 callers, ≥1
- * endpoint, the self-caller filtered out, the cron kept separate from
- * endpoints), the degraded/no-index path, and the 404/422 edge cases.
+ * endpoint, the cron kept separate from endpoints), a same-file reference
+ * never resolving to its own declaring file through the real
+ * `resolveReferences` import-graph join (P2 — see "self-caller" test below),
+ * the degraded/no-index path, and the 404/422 edge cases.
  *
  * SAFETY: `secrets` is overridden with a keyless `MockSecretsProvider` per
  * server Insights 2026-09-24, even though this route never calls an
  * LLM/GitHub adapter.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
@@ -74,7 +77,7 @@ d('GET /pulls/:id/blast (T3, Testcontainers pg)', () => {
     });
   }
 
-  it('reads a full persistent index: ≥2 callers, ≥1 endpoint, the cron kept separate, no self-caller, indexed_sha from the index', async () => {
+  it('reads a full persistent index: ≥2 callers, ≥1 endpoint, the cron kept separate, indexed_sha from the index', async () => {
     const app = await appWith();
     const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId, ['src/lib/rate.ts']);
     const repoIntelRepo = new RepoIntelRepository(pg.handle.db);
@@ -93,12 +96,13 @@ d('GET /pulls/:id/blast (T3, Testcontainers pg)', () => {
       },
     ]);
 
-    // Resolved cross-file callers + one self-reference (declFile === fromPath),
-    // which must be filtered out of the response (R2, blast/helpers.ts).
+    // Resolved cross-file callers (declFile already set, as `resolveReferences`
+    // would leave it after resolving through an import edge — see the
+    // dedicated "self-caller" test below for that resolution happening for
+    // real).
     await pg.handle.db.insert(t.references).values([
       { repoId: repo.id, fromPath: 'src/api/public/index.ts', toSymbol: 'rateLimit', line: 23, declFile: 'src/lib/rate.ts' },
       { repoId: repo.id, fromPath: 'src/api/webhooks.ts', toSymbol: 'rateLimit', line: 10, declFile: 'src/lib/rate.ts' },
-      { repoId: repo.id, fromPath: 'src/lib/rate.ts', toSymbol: 'rateLimit', line: 5, declFile: 'src/lib/rate.ts' },
     ]);
 
     // `getResolvedCallers` inner-joins `file_rank` on every caller `fromPath`.
@@ -140,7 +144,6 @@ d('GET /pulls/:id/blast (T3, Testcontainers pg)', () => {
     const group = parsed.downstream[0]!;
     expect(group.symbol).toBe('rateLimit');
     expect(group.callers.length).toBeGreaterThanOrEqual(2);
-    expect(group.callers.some((c) => c.file === 'src/lib/rate.ts')).toBe(false);
     expect(group.endpoints_affected).toContain('GET /api/public/items');
     expect(group.crons_affected).toContain('job:reset-rate-buckets');
     expect(group.endpoints_affected).not.toContain('job:reset-rate-buckets');
@@ -153,6 +156,104 @@ d('GET /pulls/:id/blast (T3, Testcontainers pg)', () => {
     // seeds with the schema default branch ('main').
     expect(parsed.files).toEqual({ changed: 1, indexed: 1 });
     expect(parsed.indexed_branch).toBe('main');
+
+    await app.close();
+  });
+
+  it('a same-file reference never resolves to its own declaring file through the real resolveReferences import-graph join (P2)', async () => {
+    const app = await appWith();
+    const { repo, pr } = await setupRepoAndPr(pg.handle.db, workspaceId, ['src/lib/rate.ts']);
+    const repoIntelRepo = new RepoIntelRepository(pg.handle.db);
+
+    await repoIntelRepo.insertSymbols([
+      {
+        repoId: repo.id,
+        path: 'src/lib/rate.ts',
+        name: 'rateLimit',
+        kind: 'function',
+        line: 1,
+        endLine: 10,
+        exported: true,
+        signature: 'function rateLimit()',
+        contentHash: 'h1',
+      },
+      // The caller's own enclosing symbol — `service.ts`'s
+      // `getPersistentBlast` labels a caller with the nearest persistent
+      // symbol at/before its reference line, not the bare toSymbol.
+      {
+        repoId: repo.id,
+        path: 'src/api/public/index.ts',
+        name: 'publicRouter',
+        kind: 'function',
+        line: 20,
+        endLine: 30,
+        exported: true,
+        signature: 'function publicRouter()',
+        contentHash: 'h2',
+      },
+    ]);
+
+    // A real import edge only for the cross-file caller — there is
+    // deliberately NO `src/lib/rate.ts -> src/lib/rate.ts` self-edge, because
+    // a file never imports itself. This is what makes the self-caller
+    // guarantee hold: `resolveReferences`'s join requires an edge from the
+    // reference's own file to the declaring file.
+    await pg.handle.db.insert(t.fileEdges).values([
+      { repoId: repo.id, fromFile: 'src/api/public/index.ts', toFile: 'src/lib/rate.ts' },
+    ]);
+
+    // Both references start unresolved (decl_file NULL), exactly as the
+    // indexer leaves them before `resolveReferences` runs — one cross-file
+    // (resolvable via the edge above), one same-file (no edge to resolve
+    // through, since there's no self-edge).
+    await pg.handle.db.insert(t.references).values([
+      { repoId: repo.id, fromPath: 'src/api/public/index.ts', toSymbol: 'rateLimit', line: 23, declFile: null },
+      { repoId: repo.id, fromPath: 'src/lib/rate.ts', toSymbol: 'rateLimit', line: 5, declFile: null },
+    ]);
+
+    await repoIntelRepo.resolveReferences(repo.id, { reset: false });
+
+    // Confirm the resolution outcome directly at the repository level: the
+    // same-file reference's decl_file stayed NULL (never selected by
+    // `getResolvedCallers`'s `inArray(declFile, declFiles)`), independent of
+    // whatever the route/blast layer does with the result.
+    const resolvedRows = await pg.handle.db
+      .select({ fromPath: t.references.fromPath, declFile: t.references.declFile })
+      .from(t.references)
+      .where(eq(t.references.repoId, repo.id));
+    const sameFileRow = resolvedRows.find((r) => r.fromPath === 'src/lib/rate.ts');
+    expect(sameFileRow?.declFile).toBeNull();
+    const crossFileRow = resolvedRows.find((r) => r.fromPath === 'src/api/public/index.ts');
+    expect(crossFileRow?.declFile).toBe('src/lib/rate.ts');
+
+    // `getResolvedCallers` inner-joins `file_rank` on every caller `fromPath`
+    // — seed it for both files so the same-file row's absence from the
+    // response is attributable only to its unresolved decl_file, not to a
+    // missing file_rank row.
+    await pg.handle.db.insert(t.fileRank).values([
+      { repoId: repo.id, filePath: 'src/api/public/index.ts', pagerank: 0.8, hotness: 0, rank: 0.8, percentile: 90 },
+      { repoId: repo.id, filePath: 'src/lib/rate.ts', pagerank: 0.9, hotness: 0, rank: 0.9, percentile: 95 },
+    ]);
+
+    await repoIntelRepo.upsertIndexState({
+      repoId: repo.id,
+      lastIndexedSha: 'abc123',
+      indexerVersion: 2,
+      status: 'full',
+      filesIndexed: 2,
+      filesSkipped: 0,
+      stats: {},
+    });
+
+    const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
+    expect(res.statusCode).toBe(200);
+    const parsed = BlastRadiusResponse.parse(res.json());
+
+    expect(parsed.downstream).toHaveLength(1);
+    const group = parsed.downstream[0]!;
+    expect(group.symbol).toBe('rateLimit');
+    expect(group.callers).toEqual([{ name: 'publicRouter', file: 'src/api/public/index.ts', line: 23 }]);
+    expect(group.callers.some((c) => c.file === 'src/lib/rate.ts')).toBe(false);
 
     await app.close();
   });

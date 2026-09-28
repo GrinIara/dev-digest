@@ -16,7 +16,7 @@ and web run on the host.
 - `./scripts/e2e.sh` (or `cd e2e && npm run e2e:hermetic`) — isolated e2e stack
   on alternate ports; safe to run alongside `dev.sh`.
 - `docker compose up -d` / `down` — Postgres only; `down -v` drops the data volume.
-- MCP server (opt-in, not started by `dev.sh`): `claude --mcp-config mcp-server/mcp.json` — see `mcp-server/README.md`.
+- MCP server: registered project-wide via root `/.mcp.json` (Claude Code picks it up automatically, asking for one-time approval per checkout; not started by `dev.sh` — the DevDigest API must be running separately) — see `mcp-server/README.md`.
 
 ## Map
 - `server/`, `client/`, `reviewer-core/`, `e2e/`, `mcp-server/` — see each package's own `AGENTS.md`
