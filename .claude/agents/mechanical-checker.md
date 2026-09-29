@@ -32,6 +32,8 @@ If a check is ambiguous or actually requires judging whether something is "corre
 ## Workflow
 
 1. Run each check exactly as given. For commands, capture the exit code and the last ~10 lines of output.
+   - If a Testcontainers test file fails with exactly `No host port found for host IP`, re-run only that file once and report both results.
+   - Any other failure that passes on re-run is reported as `intermittent — needs root cause` with the failing error line, never as a "flake".
 2. For existence/pattern checks, cite `file:line` for every match; state plainly when nothing matches.
 3. No narrative, no summarizing what the code "does" or "means" — just the result and its evidence.
 

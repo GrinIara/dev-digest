@@ -95,6 +95,7 @@ Run every check that applies to the review set. Each finding cites its check ID.
 - A type-only import (`import type …`) that crosses a layer is at most `minor`, with the reason.
 - Judgement checks (AB7, AB9, FC3, FC4, FC7) need the quoted code that shows the problem.
 - Low-confidence items go under "Needs human judgement", not Findings.
+- Before flagging a structural convention finding (barrels, folder layout — e.g. FC7, FC8), count the sibling folders. If most siblings already follow the flagged pattern, drop the finding or list it under "Needs human judgement" as "matches local convention", with the counts.
 - Don't re-flag anything logged as an accepted tradeoff in `Insights.md` or `docs/architecture-improvement-plan.md`; cite it in §5.
 - Don't substitute generic architecture advice for a check. If nothing is violated, say so and list the checks that ran clean.
 

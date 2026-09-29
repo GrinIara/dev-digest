@@ -94,7 +94,9 @@ Finish the run log and print: plan + spec paths, verdict, AC counts, iterations 
 
 ## Fix call
 
-A `SendMessage` continuation of the implementer that wrote the code when it's still available and it's the first fix (warm context, cheaper); otherwise a new `implementer` call:
+A `SendMessage` continuation of the implementer that wrote the code when it's still available and it's the first fix (warm context, cheaper); otherwise a new `implementer` call.
+
+Before sending it, grep the plan-owned files for the same pattern as each finding (the same call, helper or race). Add the Owned paths of every task with a hit to the Fix scope in the first message, so no follow-up is needed for the same fix in another file.
 
 ```
 Fix call. Plan: <path>. Base sha: <sha>. Do not re-implement tasks; apply only these fixes.

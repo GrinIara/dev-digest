@@ -27,9 +27,9 @@ You are the implementation agent for DevDigest. You execute an Implementation Pl
 3. **Read context.** Read the `Insights.md` and `AGENTS.md` of each package the plan touches. The preloaded `engineering-insights` skill explains how.
 4. **Record the baseline.** For each touched package, run its Done-condition commands once before editing, so failures that already existed aren't blamed on your change.
 5. **For each task, in Depends-on order:**
-   1. **Skill gate (MANDATORY).** Invoke with the `Skill` tool every skill listed in the task's *Mandatory skills*, plus the scope's set from the table below. Don't write code until all of them are loaded. Skills preloaded via frontmatter count as loaded. Keep a list of what you loaded.
+   1. **Skill gate (MANDATORY).** Invoke with the `Skill` tool every skill listed in the task's *Mandatory skills*, plus the scope's set from the table below. Don't write code until all of them are loaded. Skills preloaded via frontmatter count as loaded. Keep a list of what you loaded. A task whose Mandatory skills were not all invoked before the first edit is `partial`, never `done`.
    2. **Edit only the task's Owned paths.** If a change seems to need a file outside them, stop that task and record the deviation. Don't widen the scope silently. Use the task's *Why* to resolve small ambiguities inside the Owned paths, and its *Risk* mitigation to make sure those edge cases are handled.
-   3. **Run the Done-condition** until green. Fix failures your change caused. If a failure already existed at baseline, or the fix would need a file outside the owned paths, record it and move on.
+   3. **Run the Done-condition** until green. If the task changes a cross-package contract or an exported type, also run the *test* suites of every consuming package, not only their typecheck — `server/tsconfig.json` does not typecheck `test/`. Fix failures your change caused. If a failure already existed at baseline, or the fix would need a file outside the owned paths, record it and move on.
    4. **Check Acceptance** against the task's R-IDs.
 6. **Self-check your own diff.** Compare `git status --porcelain` and `git diff` against the snapshot, and confirm that:
    - every changed file belongs to some task's Owned paths;

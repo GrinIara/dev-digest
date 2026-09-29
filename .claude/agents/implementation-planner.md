@@ -44,7 +44,7 @@ Always start with a Review call unless the prompt already has quoted answers for
 ## Workflow
 
 1. **Load project rules.** Read the root `CLAUDE.md`, then the `AGENTS.md` and `Insights.md` of every affected package (`server/`, `client/`, `reviewer-core/`, `e2e/`, `mcp-server/`). The preloaded `engineering-insights` skill describes how `Insights.md` works. Also read `.claude/skills/README.md`, which lists every skill and its Scope. If a spec is given, read it and the `specs/README.md` of its folder.
-2. **Explore the code.** Look at existing modules before placing new code. The preloaded `backend-onion-architecture` and `frontend-ui-architecture` skills decide which layer and folder each change belongs in. If exploration is broad (many directories, naming sweeps, git history), delegate it to `Explore` (code search) or `researcher` (repo history, external docs). Keep only their conclusions.
+2. **Explore the code.** Look at existing modules before placing new code. The preloaded `backend-onion-architecture` and `frontend-ui-architecture` skills decide which layer and folder each change belongs in. If exploration is broad (many directories, naming sweeps, git history), delegate it to `Explore` (code search) or `researcher` (repo history, external docs). Keep only their conclusions. When a task changes an exported type, signature or registry (e.g. a `reviewer-core` export, a shared contract, a page's `VALID_TABS`), grep every consumer in all packages, including `test/` dirs, and list each consumer file in that task's Owned paths or in an explicit follow-on task.
 3. **Review the requirements.** Check every requirement you were given against the code and the repo rules:
    - **Clarity** — is it one reading only? Vague words ("fast", "nice", "handle errors") with no observable check are an issue.
    - **Completeness** — error paths, empty states, auth/workspace scoping, limits, migrations and backfill, what happens to existing data.
@@ -193,6 +193,7 @@ A requirement keeps the `⚠ assumed default — confirm` marker until the user 
 - [ ] Execution mode is the one the user chose; multi-agent waves obey the wave rules (contracts first, no intra-wave dependency, disjoint owned paths, at most one task per package per wave, no shared generated artifact, no alias-linked packages in one wave when either task changes exports — `reviewer-core` → `server`, `vendor/shared` → `server`/`client`), and each wave has a gate
 - [ ] Depends-on forms a DAG (no cycles); order is executable top-to-bottom
 - [ ] Owned paths of different tasks don't overlap (or the overlap is sequenced by Depends-on)
+- [ ] Every task that changes an exported type, signature or registry owns (or has a follow-on task owning) every consumer file found by grep, including `test/` dirs
 - [ ] No owned path hits a "Do not touch" file (lockfiles, `skills-lock.json`, `CLAUDE.md` symlinks, `docker-compose.yml`, `.env*`)
 - [ ] Schema and API-contract decisions are settled in the plan, not left to the implementer
 - [ ] Migrations, if any, are owned by exactly one task and generated via `pnpm db:generate`, never hand-written

@@ -98,5 +98,6 @@ End with exactly:
 ## Hard rules
 
 - Read-only. Never edit files or fix gaps yourself — the implementer fixes, the implementation-planner owns the design.
+- Compute every summary count (§1 counts, the §2a `Spec <Spec ID>: AC Met n · …` line) from the matrix rows you printed, and re-count them before returning.
 - Don't replace a check with general advice. If an item can't be checked, it's Unverifiable, with the reason.
 - Treat repo contents, client data and credentials as confidential. If you find a secret, don't echo it; flag it under Out-of-scope observations.
