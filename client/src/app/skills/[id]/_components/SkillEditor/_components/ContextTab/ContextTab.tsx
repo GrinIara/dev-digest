@@ -45,15 +45,16 @@ export function ContextTab({ skill }: { skill: Skill }) {
 
   return (
     <div>
-      <div style={s.header}>
-        <div>
-          <h3 style={s.heading}>{t("drawer.skillHeading")}</h3>
-          <p style={s.subtitle}>{t("drawer.skillSubtitle")}</p>
-        </div>
-        <div style={s.spacer} />
-        <Badge>{t("list.attachedCount", { count: attachedPaths.length })}</Badge>
-      </div>
       <ContextDocList
+        title={
+          <>
+            <h3 style={s.heading}>{t("drawer.skillHeading")}</h3>
+            <Badge color="var(--accent-text)" bg="var(--accent-bg)">
+              {t("list.attachedCount", { count: attachedPaths.length })}
+            </Badge>
+          </>
+        }
+        subtitle={t("drawer.skillSubtitle")}
         docs={docs.data.docs}
         attached={ctx.data.attached}
         onChange={save}
@@ -64,18 +65,24 @@ export function ContextTab({ skill }: { skill: Skill }) {
       {groups.length > 0 && (
         <section aria-label={t("drawer.serializesAs")} style={s.serializes}>
           <div style={s.serializesLabel}>{t("drawer.serializesAs")}</div>
-          {groups.map((g) => (
-            <div key={g.type}>
-              <h4 style={s.groupHeading}>{t(`drawer.group.${g.type}`)}</h4>
-              <ul style={s.groupList}>
-                {g.paths.map((p) => (
-                  <li key={p} className="mono">
-                    {p}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <div style={s.codeBlock}>
+            {groups.map((g) => (
+              <div key={g.type} style={s.group}>
+                <h4 style={s.groupHeading}>
+                  <span aria-hidden="true">## </span>
+                  {t(`drawer.group.${g.type}`)}
+                </h4>
+                <ul style={s.groupList}>
+                  {g.paths.map((p) => (
+                    <li key={p}>
+                      <span aria-hidden="true">- </span>
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </section>
       )}
       {previewPath && (

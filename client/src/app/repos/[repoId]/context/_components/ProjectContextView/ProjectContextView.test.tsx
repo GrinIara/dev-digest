@@ -135,10 +135,17 @@ describe("SPEC-2026-09-29-project-context", () => {
     expect(await screen.findByText("2 files · ≈340 tokens total")).toBeInTheDocument();
   });
 
-  it("renders a README.md doc in the tree with the docs badge", async () => {
+  it("renders a README.md doc in the tree and shows its docs badge in the header", async () => {
     renderView();
-    const button = await screen.findByRole("button", { name: "README.md" });
-    expect(within(button).getByText(/docs/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "README.md" }));
+    await screen.findByRole("region", { name: "README.md" });
+    expect(screen.getByText("docs")).toBeInTheDocument();
+  });
+
+  it("opens the first document in tree order without a click", async () => {
+    renderView();
+    expect(await screen.findByRole("region", { name: "specs/public-api.md" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "specs/public-api.md" })).toHaveAttribute("aria-current", "true");
   });
 
   it("registers the Project Context nav entry after Pull Requests", () => {

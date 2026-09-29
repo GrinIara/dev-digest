@@ -54,10 +54,17 @@ describe("SPEC-2026-09-29-project-context", () => {
     renderList({ attached: [present("specs/a.md", "specs", 100)] });
     const cb = screen.getByRole("checkbox", { name: /specs\/a\.md/ });
     expect(cb).toHaveAttribute("aria-checked", "true");
-    expect(cb).toHaveAccessibleName(/specs.*≈ 100 tokens/);
+    const row = cb.closest("li")!;
+    expect(within(row).getByText("a.md")).toBeInTheDocument();
+    expect(within(row).getByText("specs/")).toBeInTheDocument();
+    expect(within(row).getByText("specs")).toBeInTheDocument();
+    expect(within(row).getByText("≈ 100 tokens")).toBeInTheDocument();
     const guide = screen.getByRole("checkbox", { name: /docs\/guide\.md/ });
     expect(guide).toHaveAttribute("aria-checked", "false");
-    expect(guide).toHaveAccessibleName(/docs.*≈ 50 tokens/);
+    const guideRow = guide.closest("li")!;
+    expect(within(guideRow).getByText("guide.md")).toBeInTheDocument();
+    expect(within(guideRow).getByText("docs")).toBeInTheDocument();
+    expect(within(guideRow).getByText("≈ 50 tokens")).toBeInTheDocument();
   });
 
   it("AC-12: attached rows come first, then unattached docs", () => {

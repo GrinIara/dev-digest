@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { AppShell } from "@/components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
-import { useRepoNotFound } from "@/lib/repo-context";
+import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
 import { ProjectContextView } from "./_components/ProjectContextView";
 
 export default function ProjectContextPage() {
@@ -14,8 +14,9 @@ export default function ProjectContextPage() {
   const params = useParams<{ repoId: string }>();
   const repoId = params.repoId;
   const repoNotFound = useRepoNotFound(repoId);
+  const { activeRepo } = useActiveRepo();
 
-  const crumb = [{ label: t("title") }];
+  const crumb = [{ label: activeRepo?.full_name ?? repoId, mono: true }, { label: t("title") }];
   if (repoNotFound) {
     return (
       <AppShell crumb={crumb}>

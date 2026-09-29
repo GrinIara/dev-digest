@@ -64,7 +64,10 @@
     "preview": "Preview",
     "attached": "Attached",
     "updateError": "Couldn't update project context — try again",
-    "footerTokens": "≈ {count} tokens"
+    "footerTokens": "≈ {count} tokens",
+    "agentHeading": "Project context",
+    "agentSubtitle": "Order matters — earlier docs appear earlier in the assembled <code>## Project context</code> block. Toggle to attach.",
+    "injectedNote": "Injected as an untrusted block (<code>## Project context</code>) into every run."
   },
   "drawer": {
     "skillHeading": "Project context to use",

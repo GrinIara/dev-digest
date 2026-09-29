@@ -59,3 +59,14 @@ export function formatRootsForEmptyState(roots: string[]): string {
   const filePart = `${files.join(", ")} files`;
   return dirPart ? `${dirPart} and ${filePart}` : filePart;
 }
+
+/** Path of the first file in tree order (folders first, alphabetical), or null. */
+export function firstDocPath(docs: ContextDoc[]): string | null {
+  let nodes = buildDocTree(docs);
+  for (;;) {
+    const file = nodes.find((n): n is DocTreeFile => n.kind === "file");
+    const folder = nodes.find((n): n is DocTreeFolder => n.kind === "folder");
+    if (folder) nodes = folder.children;
+    else return file?.doc.path ?? null;
+  }
+}

@@ -42,13 +42,20 @@ export function ContextTab({ agent }: { agent: Agent }) {
   const save = (paths: string[]) =>
     setContext.mutate(paths, { onError: () => toast.error(t("list.updateError")) });
 
+  const code = (chunks: React.ReactNode) => <code style={s.code}>{chunks}</code>;
+
   return (
-    <div>
-      <div style={s.header}>
-        <div style={s.spacer} />
-        <Badge>{t("list.attachedOf", { attached: attachedPaths.length, total: docs.data.docs.length })}</Badge>
-      </div>
+    <div style={s.wrap}>
       <ContextDocList
+        title={
+          <>
+            <h3 style={s.heading}>{t("list.agentHeading")}</h3>
+            <Badge color="var(--accent-text)" bg="var(--accent-bg)">
+              {t("list.attachedOf", { attached: attachedPaths.length, total: docs.data.docs.length })}
+            </Badge>
+          </>
+        }
+        subtitle={t.rich("list.agentSubtitle", { code })}
         docs={docs.data.docs}
         attached={ctx.data.attached}
         inherited={ctx.data.inherited}
@@ -56,7 +63,10 @@ export function ContextTab({ agent }: { agent: Agent }) {
         onPreview={setPreviewPath}
         pending={setContext.isPending}
       />
-      <p style={s.footer}>{t("list.footerTokens", { count: ctx.data.total_tokens })}</p>
+      <div style={s.footer}>
+        <span style={s.footerTokens}>{t("list.footerTokens", { count: ctx.data.total_tokens })}</span>
+        <span style={s.footerNote}>{t.rich("list.injectedNote", { code })}</span>
+      </div>
       {previewPath && (
         <ContextDocDrawer
           repoId={repoId}

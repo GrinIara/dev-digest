@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ContextDoc } from "@/lib/types";
-import { buildDocTree, formatApproxTokens, formatRootsForEmptyState } from "./helpers";
+import { buildDocTree, firstDocPath, formatApproxTokens, formatRootsForEmptyState } from "./helpers";
 
 const doc = (path: string): ContextDoc => ({
   path,
@@ -53,5 +53,17 @@ describe("formatRootsForEmptyState", () => {
   });
   it("handles only directories", () => {
     expect(formatRootsForEmptyState(["specs/"])).toBe("specs/");
+  });
+});
+
+describe("firstDocPath", () => {
+  it("returns the first file in tree order (folders first, alphabetical)", () => {
+    expect(firstDocPath([doc("README.md"), doc("specs/b.md"), doc("docs/z/a.md"), doc("docs/c.md")])).toBe(
+      "docs/z/a.md",
+    );
+  });
+
+  it("returns null for no docs", () => {
+    expect(firstDocPath([])).toBeNull();
   });
 });
