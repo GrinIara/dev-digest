@@ -2,9 +2,10 @@
 # PreToolUse guard for the `doc-writer` subagent (.claude/agents/doc-writer.md) — Write/Edit only.
 # Bash goes through `readonly-guard.sh doc-writer` (second matcher in the agent frontmatter).
 # Allows only *.md under docs/ and each package's docs/ + specs/, except:
-#   - docs/plans/        (planner-owned inputs)
+#   - docs/plans/        (implementation-planner-owned inputs)
 #   - docs/agent-prompts/ (originals of DB-stored prompts — change together with PUT /agents/:id)
 #   - AGENTS.md / CLAUDE.md / Insights*.md anywhere (always-loaded agent context, maintainer-owned)
+#   - SPEC-*.md anywhere (spec-creator drafts; only the user changes spec status)
 # Exit 2 = block; stderr is fed back to the agent.
 
 set -euo pipefail
@@ -22,11 +23,13 @@ case "$tool" in
     base="${rel##*/}"
     # Deny rules first — they win inside allowed trees.
     [[ "$rel" == *..* || "$rel" == /* || -z "$rel" ]] && block "path must be inside the repo, without '..' (got: $path)"
-    [[ "$rel" == docs/plans/* ]] && block "docs/plans/ holds planner-owned plans — not a doc-writer target ($rel)"
+    [[ "$rel" == docs/plans/* ]] && block "docs/plans/ holds implementation-planner-owned plans — not a doc-writer target ($rel)"
     [[ "$rel" == docs/agent-prompts/* ]] && block "docs/agent-prompts/ are DB-prompt originals — change them with PUT /agents/:id, not here ($rel)"
     case "$base" in
       AGENTS.md|CLAUDE.md|Insights*.md)
         block "$base is always-loaded agent context — propose the edit in the Doc Report instead ($rel)" ;;
+      SPEC-*.md)
+        block "$base is a spec — spec-creator writes drafts and only the user changes its status (incl. implemented); put it in the Doc Report's Next step ($rel)" ;;
     esac
     [[ "$rel" == *.md ]] || block "doc-writer may only write Markdown (*.md) (got: $rel)"
     case "$rel" in

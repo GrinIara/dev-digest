@@ -37,9 +37,11 @@ RO=("$H/readonly-guard.sh" architecture-reviewer)
 RV=("$H/readonly-guard.sh" plan-verifier --verify)
 TW=("$H/test-writer-guard.sh")
 DW=("$H/doc-writer-guard.sh")
-PL=("$H/planner-guard.sh")
+PL=("$H/implementation-planner-guard.sh")
 SR=("$H/readonly-guard.sh" security-reviewer)
 BS=("$H/readonly-guard.sh" brainstorm)
+SC=("$H/spec-creator-guard.sh")
+SB=("$H/readonly-guard.sh" spec-creator)
 
 echo "## readonly-guard (base)"
 expect 0 "ro allow git diff range"   "$(bash_json 'git diff main...HEAD')" "${RO[@]}"
@@ -152,9 +154,11 @@ expect 2 "dw block e2e flow json"        "$(write_json "$R/e2e/specs/01-app-boot
 expect 2 "dw block non-md"               "$(write_json "$R/docs/x.txt")" "${DW[@]}"
 expect 2 "dw block .. traversal"         "$(write_json "$R/docs/../server/src/app.ts")" "${DW[@]}"
 expect 2 "dw block product code"         "$(write_json "$R/server/src/app.ts")" "${DW[@]}"
+expect 2 "dw block SPEC in package specs" "$(edit_json "$R/server/specs/SPEC-2099-01-01-x.md")" "${DW[@]}"
+expect 2 "dw block SPEC in docs/"       "$(write_json "$R/docs/SPEC-2099-01-01-x.md")" "${DW[@]}"
 
 
-echo "## planner-guard"
+echo "## implementation-planner-guard"
 existing_plan="$(ls "$R"/docs/plans/*.md | head -1)"
 expect 0 "pl allow create new plan"      "$(write_json "$R/docs/plans/2099-01-01-guard-test-new.md")" "${PL[@]}"
 expect 2 "pl block overwrite plan"       "$(write_json "$existing_plan")" "${PL[@]}"
@@ -165,6 +169,11 @@ expect 2 "pl block Write non-md plan"    "$(write_json "$R/docs/plans/x.txt")" "
 expect 2 "pl block .. traversal"         "$(write_json "$R/docs/plans/../../server/src/app.ts")" "${PL[@]}"
 expect 0 "pl allow read-only git"        "$(bash_json 'git log --oneline -5')" "${PL[@]}"
 expect 2 "pl block rm"                   "$(bash_json 'rm docs/plans/x.md')" "${PL[@]}"
+expect 2 "pl block Write cross-pkg spec" "$(write_json "$R/specs/SPEC-98-new-feature.md")" "${PL[@]}"
+expect 2 "pl block Write package spec"   "$(write_json "$R/server/specs/SPEC-98-x.md")" "${PL[@]}"
+expect 2 "pl block SPEC-named plan"      "$(write_json "$R/docs/plans/SPEC-98-x.md")" "${PL[@]}"
+expect 2 "pl block delegate spec-creator" "$(jq -n '{tool_name: "Agent", tool_input: {subagent_type: "spec-creator", prompt: "x"}}')" "${PL[@]}"
+expect 0 "pl allow delegate Explore"     "$(jq -n '{tool_name: "Agent", tool_input: {subagent_type: "Explore", prompt: "x"}}')" "${PL[@]}"
 
 echo "## security-reviewer / brainstorm (readonly-guard base)"
 expect 0 "sr allow grep -e"              "$(bash_json 'grep -rn -e sql.raw -e dangerouslySetInnerHTML server/src client/src')" "${SR[@]}"
@@ -174,6 +183,43 @@ expect 2 "sr block curl"                 "$(bash_json 'curl http://localhost:300
 expect 0 "bs allow git log"              "$(bash_json 'git log --oneline -5')" "${BS[@]}"
 expect 2 "bs block Write plan"           "$(write_json "$R/docs/plans/2099-01-01-x.md")" "${BS[@]}"
 expect 2 "bs block Edit"                 "$(edit_json "$R/client/src/app/layout.tsx")" "${BS[@]}"
+
+echo "## spec-creator-guard"
+nid="SPEC-2099-01-01-new-feature"
+draft="$(printf '# Spec: x\nSpec ID: %s\nStatus: draft\nSupersedes: —\n' "$nid")"
+scratch_id="SPEC-2099-01-02-guard-test-draft"
+scratch="$R/specs/$scratch_id.md"
+printf '# Spec: t\nSpec ID: %s\nStatus: draft\n' "$scratch_id" >"$scratch"
+approved="$R/server/specs/SPEC-2099-01-03-guard-test-approved.md"
+printf '# Spec: t\nSpec ID: SPEC-2099-01-03-guard-test-approved\nStatus: approved\n' >"$approved"
+expect 0 "sc allow new cross-package spec" "$(write_json "$R/specs/$nid.md" "$draft")" "${SC[@]}"
+expect 0 "sc allow new package spec"     "$(write_json "$R/client/specs/$nid.md" "$draft")" "${SC[@]}"
+expect 0 "sc allow mcp-server spec"      "$(write_json "$R/mcp-server/specs/$nid.md" "$draft")" "${SC[@]}"
+expect 0 "sc allow Edit draft"           "$(edit_json "$scratch" "more text")" "${SC[@]}"
+expect 0 "sc allow Edit specs README"    "$(edit_json "$R/specs/README.md")" "${SC[@]}"
+expect 0 "sc ignores Bash (other matcher)" "$(bash_json 'rm -rf x')" "${SC[@]}"
+expect 2 "sc block used spec id"         "$(write_json "$R/client/specs/$scratch_id.md" "$(printf 'Spec ID: %s\nStatus: draft\n' "$scratch_id")")" "${SC[@]}"
+expect 2 "sc block Spec ID mismatch"     "$(write_json "$R/specs/SPEC-2099-01-01-other.md" "$draft")" "${SC[@]}"
+expect 2 "sc block non-draft Write"      "$(write_json "$R/specs/$nid.md" "$(printf 'Spec ID: %s\nStatus: approved\n' "$nid")")" "${SC[@]}"
+expect 2 "sc block overwrite draft"      "$(write_json "$scratch" "$draft")" "${SC[@]}"
+expect 2 "sc block Edit approved"        "$(edit_json "$approved")" "${SC[@]}"
+expect 2 "sc block Edit to approved"     "$(edit_json "$scratch" "Status: approved")" "${SC[@]}"
+expect 2 "sc block old SPEC-NN name"     "$(write_json "$R/specs/SPEC-01-new-feature.md" "$draft")" "${SC[@]}"
+expect 2 "sc block name without SPEC"    "$(write_json "$R/specs/new-feature.md" "$draft")" "${SC[@]}"
+expect 2 "sc block contract spec"        "$(edit_json "$R/server/specs/review-flow.md")" "${SC[@]}"
+expect 2 "sc block nested dir"           "$(write_json "$R/specs/designs/$nid.md" "$draft")" "${SC[@]}"
+expect 2 "sc block docs/"                "$(write_json "$R/docs/$nid.md" "$draft")" "${SC[@]}"
+expect 2 "sc block product code"         "$(write_json "$R/server/src/app.ts")" "${SC[@]}"
+expect 2 "sc block .. traversal"         "$(write_json "$R/specs/../server/src/$nid.md" "$draft")" "${SC[@]}"
+expect 2 "sc block overwrite README"     "$(write_json "$R/specs/README.md")" "${SC[@]}"
+expect 0 "sc allow delegate researcher"  "$(jq -n '{tool_name: "Agent", tool_input: {subagent_type: "researcher", prompt: "x"}}')" "${SC[@]}"
+expect 0 "sc allow delegate Explore"     "$(jq -n '{tool_name: "Agent", tool_input: {subagent_type: "Explore", prompt: "x"}}')" "${SC[@]}"
+expect 2 "sc block delegate implementer" "$(jq -n '{tool_name: "Agent", tool_input: {subagent_type: "implementer", prompt: "x"}}')" "${SC[@]}"
+expect 2 "sc block delegate no type"    "$(jq -n '{tool_name: "Agent", tool_input: {prompt: "x"}}')" "${SC[@]}"
+expect 0 "sb allow ls specs"             "$(bash_json 'ls specs server/specs | grep -e SPEC-')" "${SB[@]}"
+expect 2 "sb block Write via readonly"   "$(write_json "$R/specs/$nid.md")" "${SB[@]}"
+expect 2 "sb block redirect"             "$(bash_json 'echo x > specs/x.md')" "${SB[@]}"
+rm -f "$scratch" "$approved"
 
 echo
 echo "$pass passed, $fail failed"

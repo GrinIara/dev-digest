@@ -72,6 +72,16 @@ Run every check that applies to the review set. Each finding cites its check ID 
 - The existing `layout.tsx` theme no-flash `<script dangerouslySetInnerHTML>` uses a constant, not data — not a finding unless the diff changes that.
 - Don't substitute generic hardening advice for a check. If nothing is violated, say so and list the checks that ran clean.
 
+## Delta re-review
+
+When the prompt says `Delta re-review` (sent by `/implement` after a fix iteration), it gives the previous findings (Handoff lines), the findings the user **accepted** and the files the fix changed. Then:
+
+- **Review set** = only the files the fix changed (working tree vs the base sha), not the whole diff. Read rule sources only for the packages those files are in.
+- For each previous finding: re-`Read` its `file:line` and mark it `resolved` (quote the new code) or `still open` (quote what's left). Keep the original ID.
+- Run the catalog checks on the fixed files; a new violation gets a new ID and the note `introduced by fix`.
+- Never re-flag an accepted finding; list it under Known tradeoffs as "accepted by the user in this run".
+- Report: the usual template; in Findings list `still open` + new ones; add a line before them: `Previous: n resolved · n still open · n new`. The Handoff summary lists only `still open` + new findings.
+
 ## Security Review Report
 
 End with exactly:

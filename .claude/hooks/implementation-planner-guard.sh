@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# PreToolUse guard for the `planner` subagent (.claude/agents/planner.md).
+# PreToolUse guard for the `implementation-planner` subagent (.claude/agents/implementation-planner.md).
 # Enforces what frontmatter cannot:
 #   - Write only to create a NEW docs/plans/*.md (no overwrite); Edit/NotebookEdit always blocked
+#   - Never touches specs (specs/, <package>/specs/, SPEC-*.md) — spec work belongs to spec-creator + the user
 #   - Agent only for researcher / Explore (Agent(type) lists are ignored in subagents)
 #   - Bash only for read-only inspection commands
 # Exit 2 = block; stderr is fed back to the agent.
@@ -12,26 +13,28 @@ input="$(cat)"
 tool="$(jq -r '.tool_name // empty' <<<"$input")"
 root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
-block() { echo "planner-guard: $1" >&2; exit 2; }
+block() { echo "implementation-planner-guard: $1" >&2; exit 2; }
 
 case "$tool" in
   Edit|NotebookEdit)
-    block "planner cannot edit existing files — it only creates a new docs/plans/*.md with Write"
+    block "implementation-planner cannot edit existing files — it only creates a new docs/plans/*.md with Write"
     ;;
 
   Write)
     path="$(jq -r '.tool_input.file_path // empty' <<<"$input")"
     rel="${path#"$root"/}"
+    [[ "$rel" == specs/* || "$rel" == */specs/* || "$(basename "$rel")" == SPEC-* ]] \
+      && block "implementation-planner never writes specs — that is spec-creator's job (got: $rel)"
     [[ "$rel" == docs/plans/*.md && "$rel" != *..* ]] \
-      || block "planner may only write docs/plans/*.md (got: $rel)"
+      || block "implementation-planner may only write docs/plans/*.md (got: $rel)"
     [[ -e "$root/$rel" ]] \
-      && block "planner may only create a new plan file, not overwrite $rel — use a new slug (e.g. -v2)"
+      && block "implementation-planner may only create a new plan file, not overwrite $rel — use a new slug (e.g. -v2)"
     ;;
 
   Agent)
     type="$(jq -r '.tool_input.subagent_type // empty' <<<"$input")"
     [[ "$type" == "researcher" || "$type" == "Explore" ]] \
-      || block "planner may only delegate to researcher or Explore (got: ${type:-<none>})"
+      || block "implementation-planner may only delegate to researcher or Explore (got: ${type:-<none>})"
     ;;
 
   Bash)
@@ -64,7 +67,7 @@ case "$tool" in
             *) block "only read-only git subcommands are allowed (got: git $sub)" ;;
           esac
           ;;
-        *) block "command not in planner read-only allowlist: $first" ;;
+        *) block "command not in implementation-planner read-only allowlist: $first" ;;
       esac
     done < <(sed -E 's/(\|\||&&|;|\|)/\n/g' <<<"$cmd")
     ;;
