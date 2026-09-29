@@ -128,4 +128,29 @@ describe("useBlastResync", () => {
     expect(result.current.noChange).toBe(false);
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
+  it("SPEC-2026-09-29-project-context: a 409 local_edits exposes pendingLocalEdits and stops polling; confirmDiscard restarts with discardLocalEdits, cancelDiscard clears", () => {
+    statusData = { status: "full", updatedAt: "t0", lastIndexedSha: "sha0" };
+    resyncMutate.mockImplementationOnce((_vars, opts) => {
+      opts?.onError?.(new ApiError("conflict", 409, "local_edits", { paths: ["specs/a.md"] }));
+    });
+    const { result } = renderWithClient("pr1");
+
+    act(() => result.current.start());
+    expect(result.current.pendingLocalEdits).toEqual(["specs/a.md"]);
+    expect(result.current.running).toBe(false);
+    expect(result.current.error).toBeNull();
+
+    act(() => result.current.cancelDiscard());
+    expect(result.current.pendingLocalEdits).toBeNull();
+    expect(resyncMutate).toHaveBeenCalledTimes(1);
+
+    resyncMutate.mockImplementationOnce((_vars, opts) => {
+      opts?.onError?.(new ApiError("conflict", 409, "local_edits", { paths: ["specs/a.md"] }));
+    });
+    act(() => result.current.start());
+    act(() => result.current.confirmDiscard());
+    expect(result.current.pendingLocalEdits).toBeNull();
+    expect(result.current.running).toBe(true);
+    expect(resyncMutate.mock.calls[2]?.[0]).toEqual({ discardLocalEdits: true });
+  });
 });

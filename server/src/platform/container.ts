@@ -29,6 +29,8 @@ import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
+import { FsRepoDocs } from '../adapters/repo-docs/index.js';
+import type { RepoDocs } from '../adapters/repo-docs/port.js';
 
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
@@ -51,6 +53,8 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** Project Context: confined repo-clone doc access. */
+  repoDocs?: RepoDocs;
 }
 
 export class Container {
@@ -75,6 +79,7 @@ export class Container {
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
+  private _repoDocs?: RepoDocs;
   private _priceBook?: PriceBook;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
@@ -129,6 +134,13 @@ export class Container {
     if (this.overrides.tokenizer) return this.overrides.tokenizer;
     this._tokenizer ??= new TiktokenTokenizer();
     return this._tokenizer;
+  }
+
+  /** Confined markdown-doc access inside repo clones (Project Context). */
+  get repoDocs(): RepoDocs {
+    if (this.overrides.repoDocs) return this.overrides.repoDocs;
+    this._repoDocs ??= new FsRepoDocs(this.config.cloneDir);
+    return this._repoDocs;
   }
 
   /**

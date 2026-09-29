@@ -147,6 +147,21 @@ export class RepoIntelRepository {
     return row ?? null;
   }
 
+  /** Workspace-scoped variant of `getRepoBasics` for user-facing routes. */
+  async getRepoBasicsInWorkspace(workspaceId: string, repoId: string): Promise<RepoBasics | null> {
+    const [row] = await this.db
+      .select({
+        id: t.repos.id,
+        owner: t.repos.owner,
+        name: t.repos.name,
+        defaultBranch: t.repos.defaultBranch,
+        clonePath: t.repos.clonePath,
+      })
+      .from(t.repos)
+      .where(and(eq(t.repos.id, repoId), eq(t.repos.workspaceId, workspaceId)));
+    return row ?? null;
+  }
+
   /** All cached symbols for a repo (from blast's persistence). */
   async getCachedSymbols(repoId: string): Promise<CachedSymbolRow[]> {
     return this.db

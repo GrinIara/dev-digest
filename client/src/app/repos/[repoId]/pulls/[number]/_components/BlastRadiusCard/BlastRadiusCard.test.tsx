@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { BlastRadiusResponse } from "@devdigest/shared";
@@ -384,5 +384,45 @@ describe("BlastRadiusCard", () => {
 
     expect(screen.getByText("No downstream callers to graph.")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "Blast radius graph" })).not.toBeInTheDocument();
+  });
+});
+
+describe("SPEC-2026-09-29-project-context", () => {
+  it("AC-58: a 409 local_edits lists the paths; Cancel sends nothing, Confirm re-posts with discard_local_edits", () => {
+    blastState = {
+      data: { ...HAPPY, degraded: true, reason: "index_partial" },
+      isLoading: false,
+      isError: false,
+      refetch,
+    };
+    resyncMutate.mockImplementationOnce((_vars: unknown, opts?: { onError?: (err: unknown) => void }) => {
+      opts?.onError?.(
+        new ApiError("Local edits would be discarded", 409, "local_edits", { paths: ["specs/a.md"] }),
+      );
+    });
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Resync" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Discard local edits?")).toBeInTheDocument();
+    expect(within(dialog).getByText("specs/a.md")).toBeInTheDocument();
+    expect(resyncMutate).toHaveBeenCalledTimes(1);
+    // A conflict is not a failure: no error alert, polling stopped.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(resyncMutate).toHaveBeenCalledTimes(1);
+
+    resyncMutate.mockImplementationOnce((_vars: unknown, opts?: { onError?: (err: unknown) => void }) => {
+      opts?.onError?.(
+        new ApiError("Local edits would be discarded", 409, "local_edits", { paths: ["specs/a.md"] }),
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Resync" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Discard and resync" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(resyncMutate).toHaveBeenCalledTimes(3);
+    expect(resyncMutate.mock.calls[2]?.[0]).toEqual({ discardLocalEdits: true });
   });
 });

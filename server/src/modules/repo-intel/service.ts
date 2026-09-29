@@ -17,7 +17,9 @@
  * The constructor takes ONLY a Container. No astgrep / depgraph / tokenizer
  * deps are imported here — those land later and plug into this same shell.
  */
-import type { CodeSymbol, RepoRef } from '@devdigest/shared';
+import { LOCAL_EDITS_CODE, type CodeSymbol, type RepoRef } from '@devdigest/shared';
+import { isDiscoverable } from '../_shared/project-docs.js';
+import { guardRepoDocs } from '../_shared/repo-docs-errors.js';
 import type { Container } from '../../platform/container.js';
 import { extractEndpoints } from '../../adapters/codeindex/extract.js';
 import {
@@ -173,13 +175,32 @@ export class RepoIntelService implements RepoIntel {
    * Insights for the incident this fixed). Failing fast here lets the route
    * return a real 404/409 instead of a job that silently does nothing.
    */
-  async assertResyncable(repoId: string): Promise<void> {
-    const repo = await this.repo.getRepoBasics(repoId);
+  async assertResyncable(
+    workspaceId: string,
+    repoId: string,
+    opts: {
+      discardLocalEdits: boolean;
+      log?: { error: (obj: object, msg: string) => void };
+    } = { discardLocalEdits: false },
+  ): Promise<void> {
+    const repo = await this.repo.getRepoBasicsInWorkspace(workspaceId, repoId);
     if (!repo) throw new NotFoundError('Repo not found');
     if (!repo.clonePath) {
       throw new ConflictError(
         'repo_not_cloned',
         "Repository isn't cloned yet — sync the repo first, then resync the index.",
+      );
+    }
+    if (opts.discardLocalEdits) return;
+    const modified = await guardRepoDocs(() => this.container.repoDocs.modifiedPaths(repo), opts.log);
+    const paths = modified.filter((p) =>
+      isDiscoverable(p, this.container.config.projectContextDirs),
+    );
+    if (paths.length > 0) {
+      throw new ConflictError(
+        LOCAL_EDITS_CODE,
+        'Resync would discard local edits to project-context documents.',
+        { paths },
       );
     }
   }

@@ -78,12 +78,12 @@ describe("A2 Agent Editor (smoke)", () => {
     expect(screen.getByText("Save agent")).toBeInTheDocument();
   });
 
-  it("renders exactly the two tab labels — Config and Skills", () => {
+  it("renders exactly the three tab labels — Config, Skills and Context", () => {
     renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
-    for (const label of ["Config", "Skills"]) {
+    for (const label of ["Config", "Skills", "Context"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
-    for (const label of ["Context", "Evals", "Stats", "CI"]) {
+    for (const label of ["Evals", "Stats", "CI"]) {
       expect(screen.queryByText(label)).not.toBeInTheDocument();
     }
   });

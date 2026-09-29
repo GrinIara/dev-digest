@@ -26,6 +26,9 @@ const EnvSchema = z.object({
   // Note: even when on, sections only populate once the repo is indexed; an
   // unindexed repo degrades gracefully. Per-agent override: agents.repo_intel.
   REPO_INTEL_ENABLED: z.string().optional(),
+  // Project Context: which doc roots are discoverable. Comma-separated subset of
+  // specs,docs,insights. Parsed by parseProjectContextDirs below.
+  PROJECT_CONTEXT_DIRS: z.string().optional(),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -37,6 +40,24 @@ const EnvSchema = z.object({
     z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
   ),
 });
+
+export type ProjectContextDir = 'specs' | 'docs' | 'insights';
+
+const ProjectContextDirSchema = z.enum(['specs', 'docs', 'insights']);
+const DEFAULT_PROJECT_CONTEXT_DIRS: readonly ProjectContextDir[] = ['specs', 'docs', 'insights'];
+
+/** Split on `,`, trim, drop empties, validate each entry, de-dupe; default when unset. */
+function parseProjectContextDirs(raw: string | undefined): readonly ProjectContextDir[] {
+  if (raw === undefined) return DEFAULT_PROJECT_CONTEXT_DIRS;
+  const items = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (items.length === 0) {
+    throw new Error('PROJECT_CONTEXT_DIRS must list at least one of: specs, docs, insights');
+  }
+  return [...new Set(items.map((s) => ProjectContextDirSchema.parse(s)))];
+}
 
 export type AppConfig = {
   databaseUrl: string;
@@ -59,6 +80,8 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /** Doc roots discoverable by Project Context. Default: specs, docs, insights. */
+  projectContextDirs: readonly ProjectContextDir[];
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -77,5 +100,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    projectContextDirs: parseProjectContextDirs(parsed.PROJECT_CONTEXT_DIRS),
   };
 }

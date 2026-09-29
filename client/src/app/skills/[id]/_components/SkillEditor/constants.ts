@@ -13,6 +13,7 @@ export const TABS: readonly SkillEditorTab[] = [
   { key: "versions", labelKey: "detail.tabs.versions", icon: "History" },
   { key: "stats", labelKey: "detail.tabs.stats", icon: "BarChart" },
   { key: "evals", labelKey: "detail.tabs.evals", icon: "FlaskConical" },
+  { key: "context", labelKey: "detail.tabs.context", icon: "FileText" },
 ];
 
 export const VALID_TABS: readonly string[] = TABS.map((t) => t.key);

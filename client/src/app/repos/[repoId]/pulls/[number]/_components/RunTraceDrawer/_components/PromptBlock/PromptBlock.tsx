@@ -25,6 +25,7 @@ export function PromptBlock({
   text,
   color,
   tokenCount,
+  modalTitle,
 }: {
   label: string;
   text: string;
@@ -32,6 +33,8 @@ export function PromptBlock({
   /** Token estimate for THIS block only (e.g. skills) — omit for blocks where
    *  a per-block count isn't meaningful. */
   tokenCount?: number;
+  /** Fullscreen modal title; defaults to `label`. */
+  modalTitle?: string;
 }) {
   const t = useTranslations("runs");
   const [open, setOpen] = React.useState(false);
@@ -90,7 +93,7 @@ export function PromptBlock({
       {full && (
         <Modal
           width={1200}
-          title={label}
+          title={modalTitle ?? label}
           onClose={() => setFull(false)}
           footer={
             <Button kind="secondary" size="sm" icon={copied ? "Check" : "Copy"} onClick={copy}>
