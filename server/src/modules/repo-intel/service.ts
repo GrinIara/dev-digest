@@ -28,6 +28,7 @@ import {
 } from '../../adapters/astgrep/index.js';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import { ConflictError, NotFoundError } from '../../platform/errors.js';
 import { RepoIntelRepository, type FullSymbolRow } from './repository.js';
 import type {
   BlastCallerRow,
@@ -159,6 +160,28 @@ export class RepoIntelService implements RepoIntel {
       };
     }
     return runIncremental(this.container, this.repo, { repoId });
+  }
+
+  /**
+   * Precondition check for `POST /repos/:id/resync`, called SYNCHRONOUSLY from
+   * the route before it enqueues a `RESYNC_JOB_KIND` job.
+   *
+   * Without this check the route always returned 202 and enqueued a job whose
+   * handler (`resyncRepo` above) degrades to `no_clone` in milliseconds without
+   * persisting anything — `GET /repos/:id/index-state` never advances, so the
+   * client polls until it times out with no visible error (see repo-intel
+   * Insights for the incident this fixed). Failing fast here lets the route
+   * return a real 404/409 instead of a job that silently does nothing.
+   */
+  async assertResyncable(repoId: string): Promise<void> {
+    const repo = await this.repo.getRepoBasics(repoId);
+    if (!repo) throw new NotFoundError('Repo not found');
+    if (!repo.clonePath) {
+      throw new ConflictError(
+        'repo_not_cloned',
+        "Repository isn't cloned yet — sync the repo first, then resync the index.",
+      );
+    }
   }
 
   /**
@@ -419,6 +442,17 @@ export class RepoIntelService implements RepoIntel {
     if (!this.container.config.repoIntelEnabled) return [];
     if (paths.length === 0) return [];
     return this.repo.getFileRankFor(repoId, paths);
+  }
+
+  /**
+   * How many of `paths` are known to the persistent index (see
+   * `RepoIntelRepository.countIndexedFiles` for why `file_rank`, not
+   * `symbols`, is the source). Pure DB read, no reparse.
+   */
+  async countIndexedFiles(repoId: string, paths: string[]): Promise<number> {
+    if (!this.container.config.repoIntelEnabled) return 0;
+    if (paths.length === 0) return 0;
+    return this.repo.countIndexedFiles(repoId, paths);
   }
 
   /** Persistent symbol read-model (T2 columns) for the given files. */

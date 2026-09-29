@@ -1,4 +1,7 @@
 {
+  "title": "Blast radius",
+  "errorTitle": "Couldn't load blast radius",
+  "errorBody": "The impact map for this PR could not be loaded.",
   "stat": {
     "symbols": "symbols",
     "callers": "callers",
@@ -11,8 +14,40 @@
   },
   "callerCount": "{count} callers",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
+  "degraded": {
+    "badge": "Incomplete index",
+    "reason": {
+      "flag_off": "repo intel disabled",
+      "index_failed": "indexing failed",
+      "index_partial": "partial index",
+      "repo_too_large": "repo too large to index",
+      "no_data": "repo not indexed yet"
+    }
+  },
+  "truncated": "Showing the top {max} callers",
+  "notIndexed": {
+    "none": "None of this PR's changed files are in the repo index yet. The index is built from {branch} ({sha}), so files added or moved in this PR aren't known to it until they're merged.",
+    "noneNoBranch": "None of this PR's changed files are in the repo index yet — they're new or the index is older than the PR. Callers can't be resolved for them.",
+    "some": "{missing} of {total} changed files aren't in the repo index (built from {branch} ({sha})) — new or moved in this PR.",
+    "someNoBranch": "{missing} of {total} changed files aren't in the repo index yet (new files or index older than the PR)."
+  },
+  "callerLinkLabel": "Open {file} line {line} on GitHub",
+  "resync": "Resync",
+  "resyncing": "Resyncing…",
+  "resyncFailed": "Resync failed: {message}",
+  "resyncNoChange": "Resync didn't change anything yet — try again in a moment.",
+  "toggleSymbol": "Toggle callers of {symbol}",
   "graph": {
     "empty": "No downstream callers to graph.",
-    "ariaLabel": "Blast radius graph"
+    "ariaLabel": "Blast radius graph",
+    "legend": {
+      "changed": "changed symbol",
+      "callers": "callers",
+      "endpoints": "endpoints affected"
+    }
+  },
+  "priorPrs": {
+    "title": "Prior PRs touching these files",
+    "empty": "No prior merged PRs touched these files."
   }
 }

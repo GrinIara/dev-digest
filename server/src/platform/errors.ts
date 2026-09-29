@@ -34,6 +34,19 @@ export class ExternalServiceError extends AppError {
   }
 }
 
+/**
+ * The request conflicts with the resource's current state (e.g. an action
+ * that needs a precondition — like a repo clone — the resource doesn't have
+ * yet). `code` is caller-supplied (unlike the other AppError subclasses,
+ * which hardcode one code each) because different conflicts need distinct,
+ * actionable codes for the client to branch on.
+ */
+export class ConflictError extends AppError {
+  constructor(code: string, message: string, details?: unknown) {
+    super(code, message, 409, details);
+  }
+}
+
 export class ConfigError extends AppError {
   constructor(message: string, details?: unknown) {
     super('config_error', message, 500, details);

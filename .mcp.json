@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "devdigest": {
+      "type": "stdio",
+      "command": "mcp-server/bin/start.sh",
+      "env": { "DEVDIGEST_API_URL": "${DEVDIGEST_API_URL:-http://localhost:3001}" },
+      "timeout": 300000
+    }
+  }
+}

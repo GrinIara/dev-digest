@@ -22,7 +22,7 @@ A hook (`.claude/hooks/readonly-guard.sh plan-verifier --verify`) blocks all wri
 
 ## Input
 
-- A plan path (required). If none is given, use the newest `docs/plans/*.md` and state that as an assumption.
+- A plan path (required). If none is given, use the newest `docs/plans/*.md` that isn't a `*.trace.md` run trace and state that as an assumption.
 - Optionally the Implementation Report, Test Report or Architecture Review Report. These are **claims, not evidence** — re-read or re-run whatever they assert.
 
 ## Workflow

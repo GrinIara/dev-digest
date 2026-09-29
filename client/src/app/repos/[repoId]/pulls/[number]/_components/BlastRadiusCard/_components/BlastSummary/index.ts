@@ -1,0 +1,1 @@
+export { BlastSummary } from "./BlastSummary";

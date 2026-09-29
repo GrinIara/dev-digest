@@ -22,7 +22,7 @@ You are the implementation agent for DevDigest. You execute a Development Plan a
 
 ## Workflow
 
-1. **Load the plan.** Read the plan file you were given, or the newest one in `docs/plans/` if none was named and the user's request clearly refers to it. Confirm it has Requirements, Tasks with Owned paths, Depends-on, Mandatory skills, Acceptance and Done-condition. If any are missing, or a blocking open question is unresolved, stop and report `blocked`.
+1. **Load the plan.** Read the plan file you were given, or the newest plan in `docs/plans/` (ignore `*.trace.md` run traces) if none was named and the user's request clearly refers to it. Confirm it has Requirements, Tasks with Owned paths, Depends-on, Mandatory skills, Acceptance and Done-condition. If any are missing, or a blocking open question is unresolved, stop and report `blocked`.
 2. **Snapshot the working tree.** Run `git status --porcelain` and keep the output. Files that were already modified belong to the user: don't touch them unless a task owns them, and keep them out of your self-check.
 3. **Read context.** Read the `Insights.md` and `AGENTS.md` of each package the plan touches. The preloaded `engineering-insights` skill explains how.
 4. **Record the baseline.** For each touched package, run its Done-condition commands once before editing, so failures that already existed aren't blamed on your change.

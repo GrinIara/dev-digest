@@ -145,6 +145,12 @@ export interface RepoIntel {
 
   // --- Reads --------------------------------------------------------------
   getBlastRadius(repoId: string, changedFiles: string[]): Promise<BlastResult>;
+  /**
+   * How many of `paths` are known to the persistent index — a pure read, no
+   * reparse. Used by blast to tell "no impact" apart from "these files
+   * aren't in the index yet" (new files, or an index older than the PR).
+   */
+  countIndexedFiles(repoId: string, paths: string[]): Promise<number>;
   getRepoMap(repoId: string, tokenBudget?: number): Promise<RepoMapResult>;
   getFileRank(repoId: string, paths: string[]): Promise<FileRankRow[]>;
   getSymbolsInFiles(repoId: string, paths: string[]): Promise<SymbolRow[]>;

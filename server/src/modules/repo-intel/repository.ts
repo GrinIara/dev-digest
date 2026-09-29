@@ -436,6 +436,28 @@ export class RepoIntelRepository {
       .where(eq(t.fileEdges.repoId, repoId));
   }
 
+  /**
+   * How many of `paths` have a `file_rank` row for this repo — i.e. are known
+   * to the persistent index.
+   *
+   * `file_rank` over `symbols`: `computeFileRank` (`pipeline/rank.ts`) writes
+   * exactly one row per file the full-index walk actually processed
+   * (`computeFileRank(walk.files, edgeRows)`, `pipeline/full.ts:228`),
+   * regardless of whether that file declared any symbol. `symbols` only gets
+   * rows for files with ≥1 declaration, so a file with zero declared symbols
+   * (a pure re-export, a constants-only barrel, a types-only file) would
+   * wrongly read as "not indexed" if counted via `symbols.path` instead.
+   * `file_rank` is therefore the table that "covers all indexed files".
+   */
+  async countIndexedFiles(repoId: string, paths: string[]): Promise<number> {
+    if (paths.length === 0) return 0;
+    const rows = await this.db
+      .select({ path: t.fileRank.filePath })
+      .from(t.fileRank)
+      .where(and(eq(t.fileRank.repoId, repoId), inArray(t.fileRank.filePath, paths)));
+    return rows.length;
+  }
+
   /** `{path, percentile}` for the given paths (smart-diff / run-executor). */
   async getFileRankFor(repoId: string, paths: string[]): Promise<FileRankRow[]> {
     if (paths.length === 0) return [];

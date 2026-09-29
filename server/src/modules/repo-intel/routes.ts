@@ -4,6 +4,8 @@
  *   GET  /repos/:id/index-state  → IndexState (always works; degraded on missing data)
  *   POST /repos/:id/resync       → enqueues a RESYNC_JOB_KIND job (202 + job id):
  *                                  fetch latest from origin + incremental reindex.
+ *                                  404 for an unknown repo, 409 when the repo
+ *                                  isn't cloned yet (see assertResyncable).
  *
  * Job-handler registration lives here: this plugin runs once at app boot and
  * calls `RepoIntelService.registerIndexJobHandlers()` so INDEX/REFRESH jobs
@@ -45,6 +47,9 @@ export default async function repoIntelRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams } },
     async (req, reply) => {
       const { workspaceId } = await getContext(container, req);
+      // Fail fast when the resync can't possibly do anything (unknown repo,
+      // or no clone yet) instead of enqueueing a job that degrades silently.
+      await service.assertResyncable(req.params.id);
       // 202 even when enqueue fails (no handler / DB hiccup) so the UI can
       // still poll /index-state without an inline error path. The actual
       // outcome shows up in `repo_index_state` once the worker runs.

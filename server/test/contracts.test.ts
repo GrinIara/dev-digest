@@ -4,6 +4,7 @@ import {
   Finding,
   Intent,
   BlastRadius,
+  BlastRadiusResponse,
   Risks,
   PrHistory,
   SmartDiff,
@@ -152,6 +153,54 @@ describe('AI contracts parse fixtures', () => {
 
   it('SmartDiffRole rejects unknown roles', () => {
     expect(SmartDiffRole.safeParse('vendor').success).toBe(false);
+  });
+
+  it('BlastRadiusResponse (GET /pulls/:id/blast wire shape)', () => {
+    expect(() =>
+      BlastRadiusResponse.parse({
+        changed_symbols: [{ name: 'rateLimit', file: 'src/lib/rate.ts', kind: 'function' }],
+        downstream: [
+          {
+            symbol: 'rateLimit',
+            callers: [{ name: 'publicRouter', file: 'src/api/public/index.ts', line: 23 }],
+            endpoints_affected: ['GET /api/public/items'],
+            crons_affected: ['job:reset-rate-buckets'],
+          },
+        ],
+        summary: '1 changed symbol(s) reach 1 caller(s); 1 endpoint(s) and 1 cron(s) may be affected. Index incomplete (index_partial).',
+        pr_id: 'pr1',
+        counts: { symbols: 1, callers: 1, endpoints: 1, crons: 1 },
+        degraded: true,
+        reason: 'index_partial',
+        indexed_sha: 'abc123',
+        indexed_branch: 'main',
+        callers_truncated: false,
+        limits: { max_callers_per_symbol: 20, bfs_depth: 2 },
+        facts_by_file: {
+          'src/api/public/index.ts': { endpoints: ['GET /api/public/items'], crons: ['job:reset-rate-buckets'] },
+        },
+        files: { changed: 1, indexed: 1 },
+      }),
+    ).not.toThrow();
+  });
+
+  it('BlastRadiusResponse rejects an unknown degraded reason', () => {
+    const result = BlastRadiusResponse.safeParse({
+      changed_symbols: [],
+      downstream: [],
+      summary: 's',
+      pr_id: 'pr1',
+      counts: { symbols: 0, callers: 0, endpoints: 0, crons: 0 },
+      degraded: true,
+      reason: 'bogus',
+      indexed_sha: null,
+      indexed_branch: null,
+      callers_truncated: false,
+      limits: { max_callers_per_symbol: 20, bfs_depth: 2 },
+      facts_by_file: {},
+      files: { changed: 0, indexed: 0 },
+    });
+    expect(result.success).toBe(false);
   });
 
   it('Conformance / Onboarding / EvalRun / MemoryItem', () => {

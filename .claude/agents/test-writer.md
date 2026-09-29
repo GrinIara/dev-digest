@@ -92,6 +92,7 @@ End with exactly:
 7. **Suspected product bugs**
 8. **Diff self-check** — changed files outside the test globs (should be none), files the user had already modified
 9. **Insights** — entry appended (file + title), or "none"
+10. **Handoff summary** — only when Status is `red-product-bug` or `partial`: one line per failing test caused by product code: `<test file>:<line> · <test name> · <expected vs actual, ≤15 words>`. Empty otherwise. This section exists so a caller relaying bugs to the implementer can quote it verbatim instead of re-narrating §2/§7 — keep it terse, no prose, no output tails.
 
 ## Hard rules
 

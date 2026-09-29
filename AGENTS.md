@@ -1,12 +1,13 @@
 # dev-digest — agent map
 
 ## Stack
-No monorepo tooling. Five independent packages, each with its own
+No monorepo tooling. Six independent packages, each with its own
 `package.json`/lockfile, linked only via TypeScript path aliases: `server/`
 (`@devdigest/api`), `client/` (`@devdigest/web`), `reviewer-core/`
-(`@devdigest/reviewer-core`), `e2e/` (`@devdigest/e2e`), and
-`server/src/vendor/shared` (`@devdigest/shared`, also vendored into `client/`).
-Only Postgres (pgvector) runs in Docker — API and web run on the host.
+(`@devdigest/reviewer-core`), `e2e/` (`@devdigest/e2e`), `mcp-server/`
+(`@devdigest/mcp-server`), and `server/src/vendor/shared` (`@devdigest/shared`,
+also vendored into `client/`). Only Postgres (pgvector) runs in Docker — API
+and web run on the host.
 
 ## Commands
 - `./scripts/dev.sh` — starts Postgres, scaffolds `.env`s, installs deps,
@@ -15,9 +16,10 @@ Only Postgres (pgvector) runs in Docker — API and web run on the host.
 - `./scripts/e2e.sh` (or `cd e2e && npm run e2e:hermetic`) — isolated e2e stack
   on alternate ports; safe to run alongside `dev.sh`.
 - `docker compose up -d` / `down` — Postgres only; `down -v` drops the data volume.
+- MCP server: registered project-wide via root `/.mcp.json` (Claude Code picks it up automatically, asking for one-time approval per checkout; not started by `dev.sh` — the DevDigest API must be running separately) — see `mcp-server/README.md`.
 
 ## Map
-- `server/`, `client/`, `reviewer-core/`, `e2e/` — see each package's own `AGENTS.md`
+- `server/`, `client/`, `reviewer-core/`, `e2e/`, `mcp-server/` — see each package's own `AGENTS.md`
 - `docs/agent-prompts/` — reference reviewer system prompts + model-choice notes
 - `TESTING.md` — cross-package testing/CI strategy (one suite per package, own workflow + path filter)
 - `docker-compose.yml` — the Postgres/pgvector service definition
