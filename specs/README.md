@@ -39,3 +39,4 @@ A spec that concerns a single package goes into that package's own
 
 <!-- One line per spec: - [SPEC-YYYY-MM-DD-slug — Title](SPEC-YYYY-MM-DD-slug.md) — status -->
 - [SPEC-2026-09-29-project-context — Project Context: attach repo Markdown docs to agents and skills](SPEC-2026-09-29-project-context.md) — approved
+- [SPEC-2026-09-30-pr-risk-brief — Risk Brief: "PR Brief" block on the PR Overview tab](SPEC-2026-09-30-pr-risk-brief.md) — approved
