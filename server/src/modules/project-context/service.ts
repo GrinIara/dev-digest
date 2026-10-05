@@ -340,4 +340,49 @@ export class ProjectContextService {
     const totalTokens = docs.length ? headerTokens + docs.reduce((n, d) => n + d.tokens, 0) : 0;
     return { status: 'resolved', docs, skipped, headerTokens, totalTokens };
   }
+
+  /**
+   * Repo-wide union of attached docs (any agent, or any enabled bound skill) —
+   * used by the PR brief, which has no single agent. Deduped by path (map
+   * keys), sorted; reads like `resolveForRun` but never counts tokens.
+   */
+  async resolveForRepo(
+    workspaceId: string,
+    repo: { id: string; owner: string; name: string; clonePath: string | null },
+  ): Promise<
+    | { status: 'none' }
+    | { status: 'not_cloned' }
+    | {
+        status: 'resolved';
+        docs: { path: string; text: string }[];
+        skipped: { path: string; reason: 'missing' | 'unreadable' }[];
+      }
+  > {
+    const paths = [...(await this.repo.usedByForRepo(workspaceId, repo.id)).keys()].sort();
+    if (paths.length === 0) return { status: 'none' };
+    if (!repo.clonePath) return { status: 'not_cloned' };
+
+    const docs: { path: string; text: string }[] = [];
+    const skipped: { path: string; reason: 'missing' | 'unreadable' }[] = [];
+    for (const path of paths) {
+      if (!isDiscoverable(path, this.dirs)) {
+        skipped.push({ path, reason: 'missing' });
+        continue;
+      }
+      let r;
+      try {
+        r = await this.container.repoDocs.read(repo, path);
+      } catch (err) {
+        if (!(err instanceof RepoDocPathError)) throw err;
+        skipped.push({ path, reason: 'unreadable' });
+        continue;
+      }
+      if (!r.ok) {
+        skipped.push({ path, reason: r.reason === 'missing' ? 'missing' : 'unreadable' });
+        continue;
+      }
+      docs.push({ path, text: r.text });
+    }
+    return { status: 'resolved', docs, skipped };
+  }
 }

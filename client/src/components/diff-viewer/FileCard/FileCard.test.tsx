@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { PrFile } from "@/lib/types";
@@ -53,5 +53,22 @@ describe("FileCard — generic annotation extension points (R5)", () => {
 
     expect(screen.getByText("1 note(s) not on a line shown in this diff")).toBeInTheDocument();
     expect(screen.getByText("Orphan note")).toBeInTheDocument();
+  });
+});
+
+describe("FileCard — focused deep link", () => {
+  it("opens a file larger than the auto-expand limit and scrolls it into view when focused", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const big: PrFile = { ...FILE, additions: 500, deletions: 0 };
+
+    renderWithIntl(<FileCard file={big} />);
+    expect(screen.queryByText("const a = 1;")).not.toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    cleanup();
+    renderWithIntl(<FileCard file={big} focused />);
+    expect(screen.getByText("const a = 1;")).toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
   });
 });

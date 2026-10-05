@@ -156,10 +156,97 @@ export const SmartDiff = z.object({
 export type SmartDiff = z.infer<typeof SmartDiff>;
 
 // ---- Composed PR Brief (pr_brief.json) ----
+export const BriefFocusItem = z.object({
+  file: z.string(),
+  line: z.number().int(),
+  reason: z.string(),
+});
+export type BriefFocusItem = z.infer<typeof BriefFocusItem>;
+
+/**
+ * The LLM structured-output schema for the PR brief. All fields are required
+ * (no `.optional()`, no `.min/.max`) — this schema is used in strict
+ * json_schema mode, which rejects optional fields. Caps are enforced
+ * server-side after grounding.
+ */
+export const BriefModelOutput = z.object({
+  summary: z.string(),
+  risks: z.array(Risk),
+  review_focus: z.array(BriefFocusItem),
+});
+export type BriefModelOutput = z.infer<typeof BriefModelOutput>;
+
+export const BriefMissingInputName = z.enum(['intent', 'blast', 'specs', 'issue']);
+export type BriefMissingInputName = z.infer<typeof BriefMissingInputName>;
+
+export const BriefMissingInputStatus = z.enum(['missing', 'partial']);
+export type BriefMissingInputStatus = z.infer<typeof BriefMissingInputStatus>;
+
+// Literals on purpose: review-api.ts imports brief.ts, so don't import back.
+export const BriefMissingReason = z.enum([
+  'not_classified',
+  'flag_off',
+  'index_failed',
+  'index_partial',
+  'repo_too_large',
+  'no_data',
+  'none_attached',
+  'not_cloned',
+  'doc_missing',
+  'none_linked',
+  'unreachable',
+  'unsupported',
+]);
+export type BriefMissingReason = z.infer<typeof BriefMissingReason>;
+
+export const BriefMissingInput = z.object({
+  input: BriefMissingInputName,
+  status: BriefMissingInputStatus,
+  reason: BriefMissingReason,
+  ref: z.string().nullable(),
+});
+export type BriefMissingInput = z.infer<typeof BriefMissingInput>;
+
+export const BriefSpecInput = z.object({
+  path: z.string(),
+  truncated: z.boolean(),
+});
+export type BriefSpecInput = z.infer<typeof BriefSpecInput>;
+
+export const BriefIssueInput = z.object({
+  ref: z.string(),
+  truncated: z.boolean(),
+});
+export type BriefIssueInput = z.infer<typeof BriefIssueInput>;
+
 export const PrBrief = z.object({
-  intent: Intent,
-  blast: BlastRadius,
+  summary: z.string(),
+  intent: Intent.nullable(),
+  blast: BlastRadius.nullable(),
   risks: Risks,
+  review_focus: z.array(BriefFocusItem),
   history: PrHistory,
+  missing_inputs: z.array(BriefMissingInput),
+  inputs: z.object({
+    specs: z.array(BriefSpecInput),
+    issues: z.array(BriefIssueInput),
+  }),
+  dropped: z.object({
+    risks: z.number().int().nonnegative(),
+    focus: z.number().int().nonnegative(),
+  }),
+  head_sha: z.string(),
+  generated_at: z.string(),
+  model: z.string(),
+  provider: z.string(),
+  tokens_in: z.number().int().nonnegative(),
+  tokens_out: z.number().int().nonnegative(),
+  cost_usd: z.number().nullable(),
 });
 export type PrBrief = z.infer<typeof PrBrief>;
+
+export const PrBriefResponse = z.object({
+  brief: PrBrief.nullable(),
+  stale: z.boolean(),
+});
+export type PrBriefResponse = z.infer<typeof PrBriefResponse>;

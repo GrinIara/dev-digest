@@ -12,6 +12,8 @@ import { s, chevronFor } from "./styles";
 interface SmartDiffGroupsProps {
   groups: ResolvedGroup[];
   commenting?: DiffCommentApi;
+  /** Role whose group starts expanded (deep link target); resolved before mount. */
+  expandRole?: SmartDiffRole;
   fileProps: (f: PrFile) => Omit<Partial<FileCardProps>, "file" | "commenting">;
 }
 
@@ -49,10 +51,14 @@ function GroupHeader({
   );
 }
 
-export function SmartDiffGroups({ groups, commenting, fileProps }: SmartDiffGroupsProps) {
+export function SmartDiffGroups({ groups, commenting, fileProps, expandRole }: SmartDiffGroupsProps) {
   const t = useTranslations("prReview");
   const [collapsed, setCollapsed] = React.useState<Set<SmartDiffRole>>(
-    () => new Set(DEFAULT_COLLAPSED),
+    () => {
+      const initial = new Set(DEFAULT_COLLAPSED);
+      if (expandRole) initial.delete(expandRole);
+      return initial;
+    },
   );
 
   const toggle = (role: SmartDiffRole) => {

@@ -49,13 +49,19 @@ export interface FileCardProps {
   defaultOpen?: boolean;
   marked?: boolean;
   annotations?: LineAnnotationMap;
+  /** Deep-link target: opens regardless of size and scrolls into view. */
+  focused?: boolean;
 }
 
-export function FileCard({ file, commenting, defaultOpen, marked, annotations }: FileCardProps) {
+export function FileCard({ file, commenting, defaultOpen, marked, annotations, focused }: FileCardProps) {
   const t = useTranslations("shell");
   const [open, setOpen] = React.useState(
-    defaultOpen ?? (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
+    defaultOpen ?? (focused || (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES)
   );
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (focused) cardRef.current?.scrollIntoView({ block: "start" });
+  }, [focused]);
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
 
   // Rendered line keys, shared by both the comment-thread and the annotation
@@ -85,7 +91,7 @@ export function FileCard({ file, commenting, defaultOpen, marked, annotations }:
     : 0;
 
   return (
-    <div style={s.fileCard}>
+    <div ref={cardRef} style={s.fileCard}>
       <div onClick={() => setOpen((o) => !o)} style={s.fileHeader}>
         <Icon.ChevronRight size={13} style={chevronFor(open)} />
         <Icon.FileText size={14} style={s.fileIcon} />
