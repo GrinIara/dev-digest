@@ -64,13 +64,22 @@ export function usePrDetailPage() {
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
-  const setParam = (key: string, val: string | null) => {
+  const focusFile = search.get("file");
+  // One router.replace for several keys: two sequential setParam calls would
+  // each start from the same stale `search` and the second would drop the first.
+  const setParams = (updates: Record<string, string | null>) => {
     const sp = new URLSearchParams(search.toString());
-    if (val == null) sp.delete(key);
-    else sp.set(key, val);
+    for (const [key, val] of Object.entries(updates)) {
+      if (val == null) sp.delete(key);
+      else sp.set(key, val);
+    }
     router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`);
   };
-  const setTab = (t: string) => setParam("tab", t);
+  const setParam = (key: string, val: string | null) => setParams({ [key]: val });
+  // `file` only means something on the diff tab; drop it when leaving so a
+  // stale value can't re-scroll on the next visit.
+  const setTab = (t: string) => setParams(t === "diff" ? { tab: t } : { tab: t, file: null });
+  const openFileInDiff = (path: string) => setParams({ tab: "diff", file: path });
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = React.useMemo(() => reviews ?? [], [reviews]);
@@ -118,6 +127,8 @@ export function usePrDetailPage() {
     traceReview,
     setParam,
     setTab,
+    focusFile,
+    openFileInDiff,
     repoFullName,
     githubUrl,
   };

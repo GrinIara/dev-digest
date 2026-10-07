@@ -46,6 +46,8 @@ export default function PRDetailPage() {
     traceReview,
     setParam,
     setTab,
+    focusFile,
+    openFileInDiff,
     repoFullName,
     githubUrl,
   } = usePrDetailPage();
@@ -105,6 +107,7 @@ export default function PRDetailPage() {
             repoId={repoId}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
+            onOpenFile={openFileInDiff}
           />
         )}
 
@@ -141,6 +144,7 @@ export default function PRDetailPage() {
             canComment={pr.status === "open"}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
+            focusFile={focusFile}
           />
         )}
       </div>

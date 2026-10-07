@@ -27,6 +27,7 @@ If the hook blocks something you believe is legitimate, don't work around it. Re
 ## Input
 
 - A plan path in `docs/plans/` plus optional task IDs. Use the plan's §7 "New or changed tests" and each task's Acceptance as the list of behaviours to cover.
+- If the plan's `Sources:` line names a spec (`SPEC-<YYYY-MM-DD>-<slug>`), or the caller passes one, read it: **every AC whose `Verify:` is `unit` or `integration`** in the plan's scope is a test you must write (see *Spec acceptance criteria*). `e2e` and `manual` ACs go to Coverage gaps.
 - Or an explicit target (file/function/route) plus the behaviours to test.
 
 If you can't state concrete behaviours for the target, return numbered questions instead of guessing.
@@ -72,6 +73,17 @@ Example: the `react-testing-library` skill prefers `userEvent` and MSW. Neither 
 - Tests stay hermetic: no real network, GitHub or LLM calls.
 - Never weaken an assertion, add retries, `.only`, snapshot updates or suppressions to get green.
 
+## Spec acceptance criteria
+
+When a spec is in scope, its ACs are the primary test list; plan Acceptance adds to it.
+
+- Take each AC with `Verify: unit` or `Verify: integration` whose user story/requirement the plan covers (skip `AC-N — removed` and ACs the plan's §1 puts out of scope). The AC's `— observable:` part is what the test asserts.
+- The level decides the kind: `unit` → a `*.test.ts(x)`; `integration` → `app.inject` through `buildApp`, and a `*.it.test.ts` when it needs the DB.
+- Naming is fixed so `plan-verifier` can find the test with `grep`:
+  - one `describe('<Spec ID>', …)` block per spec in each file that tests its ACs, e.g. `describe('SPEC-2026-09-29-pr-rerun', …)` (AC numbers repeat across specs, the Spec ID disambiguates);
+  - inside it, each test name starts with the AC ID and a colon: `it('AC-3: returns 409 when a run is in progress', …)`. One AC per test name; an AC may have several tests.
+- An AC you can't test at its stated level (e.g. an `integration` AC whose seam doesn't exist) → don't downgrade it silently; list it under Coverage gaps with the reason.
+
 ## When a test is red because of product code
 
 Keep the test. Set status `red-product-bug` and describe expected vs. actual with the failing output. Don't try to change product code — the implementer owns it.
@@ -83,12 +95,14 @@ End with exactly:
 1. **Status** — `done` | `partial` | `blocked` | `red-product-bug`, plus the plan path or target
 2. **Tests**
 
-   | File | Kind (component/unit/integration) | Test name → behaviour | R-IDs | Result |
+   | File | Kind (component/unit/integration) | Test name → behaviour | R-IDs | AC-IDs | Result |
+
+   When a spec is in scope, follow the table with one line: `Spec ACs (unit/integration) in scope: n · with a test: m · missing: AC-…`.
 
 3. **Skills loaded**
 4. **Evidence** — per package: baseline → final, each command with the last ~10 lines of output, and both runs of the targeted file. Docker-skipped integration tests are reported as **skipped**, never as passed.
 5. **Failure-mode statements** — per test: "fails if …"
-6. **Coverage gaps** — e2e-only behaviour, async Server Components, Docker-skipped tests, missing test deps (`user-event`, `msw`), guard false positives
+6. **Coverage gaps** — spec ACs with `Verify: e2e`/`manual` or not testable at their level, e2e-only behaviour, async Server Components, Docker-skipped tests, missing test deps (`user-event`, `msw`), guard false positives
 7. **Suspected product bugs**
 8. **Diff self-check** — changed files outside the test globs (should be none), files the user had already modified
 9. **Insights** — entry appended (file + title), or "none"

@@ -17,6 +17,8 @@ import {
   Settings,
   Repo,
   PrDetail,
+  PrBrief,
+  PrBriefResponse,
 } from '@devdigest/shared';
 
 /**
@@ -292,5 +294,37 @@ describe('platform DTOs', () => {
         commits: [],
       }),
     ).not.toThrow();
+  });
+});
+
+describe('PR brief contract', () => {
+  const brief = {
+    summary: 'Adds retries.',
+    intent: null,
+    blast: null,
+    risks: { risks: [] },
+    review_focus: [{ file: 'src/a.ts', line: 3, reason: 'core change' }],
+    history: { history: [] },
+    missing_inputs: [{ input: 'issue', status: 'missing', reason: 'none_linked', ref: null }],
+    inputs: { specs: [], issues: [{ ref: '#12', truncated: false }] },
+    dropped: { risks: 0, focus: 0 },
+    head_sha: 'abc123',
+    generated_at: '2026-09-30T00:00:00.000Z',
+    model: 'gpt-x',
+    provider: 'openai',
+    tokens_in: 100,
+    tokens_out: 50,
+    cost_usd: null,
+  };
+
+  it('parses a full PrBrief and the response envelope', () => {
+    expect(PrBrief.parse(brief).inputs.issues[0]?.ref).toBe('#12');
+    expect(PrBriefResponse.parse({ brief: null, stale: false }).brief).toBeNull();
+  });
+
+  it('rejects an unknown reason and an unknown input', () => {
+    const bad = (m: unknown) => PrBrief.safeParse({ ...brief, missing_inputs: [m] }).success;
+    expect(bad({ input: 'issue', status: 'missing', reason: 'bogus', ref: null })).toBe(false);
+    expect(bad({ input: 'bogus', status: 'missing', reason: 'none_linked', ref: null })).toBe(false);
   });
 });

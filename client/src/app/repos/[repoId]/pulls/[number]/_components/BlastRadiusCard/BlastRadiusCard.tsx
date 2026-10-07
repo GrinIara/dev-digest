@@ -11,6 +11,7 @@ import { usePrBlast } from "@/lib/hooks/blast";
 import { BlastSummary } from "./_components/BlastSummary";
 import { BlastSymbolRow } from "./_components/BlastSymbolRow";
 import { BlastGraph } from "./_components/BlastGraph";
+import { DiscardLocalEditsDialog } from "./_components/DiscardLocalEditsDialog";
 import { useBlastResync } from "./hooks/useBlastResync";
 import { callerHref, kindOf } from "./helpers";
 import { s } from "./styles";
@@ -27,10 +28,15 @@ interface BlastRadiusCardProps {
 export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRadiusCardProps) {
   const t = useTranslations("blast");
   const { data, isLoading, isError, refetch } = usePrBlast(prId);
-  const { start: startResync, running: resyncing, error: resyncError, noChange: resyncNoChange } = useBlastResync(
-    repoId,
-    prId,
-  );
+  const {
+    start: startResync,
+    running: resyncing,
+    error: resyncError,
+    noChange: resyncNoChange,
+    pendingLocalEdits,
+    confirmDiscard,
+    cancelDiscard,
+  } = useBlastResync(repoId, prId);
   // Local UI state (R11), not derived data: `null` means "no row has been
   // toggled yet" — the default (first row open, rest collapsed) is computed
   // per render from `data`, since `data` isn't available on the initial
@@ -103,6 +109,10 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
       )}
       {data.degraded && !resyncError && resyncNoChange && (
         <div style={s.resyncNote}>{t("resyncNoChange")}</div>
+      )}
+
+      {pendingLocalEdits && (
+        <DiscardLocalEditsDialog paths={pendingLocalEdits} onCancel={cancelDiscard} onConfirm={confirmDiscard} />
       )}
 
       <BlastSummary

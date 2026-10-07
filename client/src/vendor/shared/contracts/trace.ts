@@ -123,6 +123,12 @@ export const RunTrace = z.object({
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
+  /** Attached docs skipped at run time (missing/unreadable), effective order;
+      nullish so old persisted traces still parse. */
+  specs_missing: z.array(z.string()).nullish(),
+  /** Per-doc token counts keyed by injected path; nullish so old persisted
+      traces still parse. */
+  specs_tokens: z.record(z.string(), z.number().int().nonnegative()).nullish(),
   log: z.array(RunLogLine),
   /** The intent classifier's own call trace; nullish so old persisted traces
       (before the intent layer) still parse. */

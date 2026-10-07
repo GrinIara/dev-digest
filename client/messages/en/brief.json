@@ -15,5 +15,48 @@
     "blame": "blame",
     "noHistory": "No history available for this line.",
     "noCommits": "No commits found for this line."
-  }
+  },
+  "title": "PR Brief",
+  "generate": "Generate brief",
+  "generating": "Generating…",
+  "refresh": "Regenerate brief",
+  "refreshHint": "Regenerating makes a new paid model call.",
+  "riskAreas": "Risk areas",
+  "reviewFocus": "Review focus — read these first ({count})",
+  "notInDiff": "not in this PR's diff",
+  "generatedMeta": "Generated {time} · {model}",
+  "generatedWithout": "Generated without: {items}",
+  "missing": {
+    "intent": {
+      "not_classified": "Intent (not classified yet)"
+    },
+    "blast": {
+      "flag_off": "Blast radius (turned off)",
+      "index_failed": "Blast radius (indexing failed)",
+      "index_partial": "Blast radius (partly indexed)",
+      "repo_too_large": "Blast radius (repository too large)",
+      "no_data": "Blast radius (no data)"
+    },
+    "specs": {
+      "none_attached": "Project docs (none attached)",
+      "not_cloned": "Project docs (repository not cloned)",
+      "doc_missing": "Project doc {ref} (missing or unreadable)"
+    },
+    "issue": {
+      "none_linked": "Linked issue (none linked)",
+      "unreachable": "Linked issue {ref} (couldn't be fetched)",
+      "unsupported": "Linked issue {ref} (unsupported tracker)"
+    }
+  },
+  "outdated": "Outdated",
+  "severity": {
+    "high": "High severity",
+    "medium": "Medium severity",
+    "low": "Low severity"
+  },
+  "expand": "Show why",
+  "collapse": "Hide",
+  "ready": "Brief ready",
+  "failed": "Brief generation failed",
+  "retry": "Retry"
 }

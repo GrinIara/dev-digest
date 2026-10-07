@@ -45,7 +45,8 @@
     "runOnPr": "Run on a PR…",
     "tabs": {
       "config": "Config",
-      "skills": "Skills"
+      "skills": "Skills",
+      "context": "Context"
     }
   },
   "config": {

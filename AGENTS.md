@@ -20,6 +20,7 @@ and web run on the host.
 
 ## Map
 - `server/`, `client/`, `reviewer-core/`, `e2e/`, `mcp-server/` — see each package's own `AGENTS.md`
+- `specs/` — Spec-Driven Development specs (`SPEC-<YYYY-MM-DD>-<slug>.md`, in English) for features spanning several packages; single-package specs go in `<package>/specs/`. Written by the `spec-creator` agent; once approved, a spec is the input for `implementation-planner`.
 - `docs/agent-prompts/` — reference reviewer system prompts + model-choice notes
 - `TESTING.md` — cross-package testing/CI strategy (one suite per package, own workflow + path filter)
 - `docker-compose.yml` — the Postgres/pgvector service definition

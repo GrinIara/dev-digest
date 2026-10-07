@@ -46,3 +46,14 @@ export interface PrRowView {
   status: "needs_review" | "reviewed" | "stale";
   updated: string;
 }
+
+export type {
+  ContextDoc,
+  ContextDocList,
+  ContextDocContent,
+  ContextDocType,
+  ContextAttachedRow,
+  ContextInheritedRow,
+  AgentContext,
+  SkillContext,
+} from "@devdigest/shared";

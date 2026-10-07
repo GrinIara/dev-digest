@@ -33,6 +33,12 @@ import type {
   SecretKey,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
+import {
+  RepoDocPathError,
+  type RepoDocs,
+  type RepoDocFile,
+  type RepoDocRead,
+} from './repo-docs/port.js';
 
 /**
  * Deterministic MOCK adapters for tests/dev — NO real network. Each mirrors the
@@ -336,5 +342,54 @@ export class MockSecretsProvider implements SecretsProvider {
   constructor(private secrets: Partial<Record<string, string>> = {}) {}
   async get(key: SecretKey): Promise<string | undefined> {
     return this.secrets[key as string];
+  }
+}
+
+/**
+ * In-memory RepoDocs. Mirrors the prod contract: writes only to existing `.md`
+ * keys; `unreadable` paths read as `unreadable`; `modified` feeds modifiedPaths.
+ */
+export class MockRepoDocs implements RepoDocs {
+  files: Record<string, string> = {};
+  modified = new Set<string>();
+  unreadable = new Set<string>();
+  writes: { path: string; bytes: number }[] = [];
+
+  constructor(files: Record<string, string> = {}) {
+    this.files = { ...files };
+  }
+
+  clonePathFor(repo: RepoRef): string {
+    return `/mock-clones/${repo.owner}/${repo.name}`;
+  }
+
+  async listMarkdown(_repo: RepoRef): Promise<RepoDocFile[]> {
+    return Object.keys(this.files)
+      .filter((p) => p.toLowerCase().endsWith('.md'))
+      .sort()
+      .map((path) => ({ path, size: Buffer.byteLength(this.files[path] ?? '', 'utf8'), mtimeMs: 0 }));
+  }
+
+  async read(_repo: RepoRef, path: string): Promise<RepoDocRead> {
+    if (this.unreadable.has(path)) return { ok: false, reason: 'unreadable' };
+    const text = this.files[path];
+    if (text === undefined) return { ok: false, reason: 'missing' };
+    return { ok: true, text, size: Buffer.byteLength(text, 'utf8'), mtimeMs: 0 };
+  }
+
+  async write(_repo: RepoRef, path: string, content: string): Promise<{ bytes: number }> {
+    if (!path.toLowerCase().endsWith('.md')) {
+      throw new RepoDocPathError('Only .md files can be written', 'not_markdown');
+    }
+    if (!(path in this.files)) throw new RepoDocPathError('Doc does not exist', 'not_found');
+    this.files[path] = content;
+    this.modified.add(path);
+    const bytes = Buffer.byteLength(content, 'utf8');
+    this.writes.push({ path, bytes });
+    return { bytes };
+  }
+
+  async modifiedPaths(_repo: RepoRef): Promise<string[]> {
+    return [...this.modified].sort();
   }
 }
