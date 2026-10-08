@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
-import { waitForPrRuns } from './helpers/runs.js';
+import { waitForPrRuns, waitForRunTrace } from './helpers/runs.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
@@ -177,7 +177,7 @@ d('Intent layer (T6, Testcontainers pg)', () => {
     await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
 
     const runId = runBody.runs[0].run_id;
-    const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+    const trace = await waitForRunTrace(app, runId);
 
     expect(trace.intent_call).not.toBeNull();
     expect(trace.intent_call.status).toBe('classified');
@@ -205,7 +205,7 @@ d('Intent layer (T6, Testcontainers pg)', () => {
     await waitForPrRuns(pg.handle.db, pr.id, { expected: 2 });
 
     const runId = secondRunBody.runs[0].run_id;
-    const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+    const trace = await waitForRunTrace(app, runId);
     expect(trace.intent_call.status).toBe('reused');
 
     await app.close();
@@ -261,7 +261,7 @@ d('Intent layer (T6, Testcontainers pg)', () => {
     expect(runs.find((r) => r.id === runBody.runs[0].run_id)?.status).toBe('done');
 
     const runId = runBody.runs[0].run_id;
-    const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+    const trace = await waitForRunTrace(app, runId);
     expect(trace.intent_call.status).toBe('failed');
 
     const intentRes = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/intent` })).json();

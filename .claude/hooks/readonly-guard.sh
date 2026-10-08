@@ -9,7 +9,7 @@
 #   mechanical-checker     → --verify
 # Enforces:
 #   - Write/Edit/NotebookEdit always blocked (defense-in-depth next to disallowedTools)
-#   - Bash only for read-only inspection commands (same allowlist as planner-guard.sh + diff/comm)
+#   - Bash only for read-only inspection commands (same allowlist as implementation-planner-guard.sh + diff/comm)
 # Known quirk: commands are split on | || && ; without honouring quotes, so
 # `grep 'a\|b'` is rejected — use `grep -e a -e b`. This over-blocks (fails closed).
 # Exit 2 = block; stderr is fed back to the agent.

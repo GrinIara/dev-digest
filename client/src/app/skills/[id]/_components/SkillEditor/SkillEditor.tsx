@@ -12,6 +12,7 @@ import { EvalsPanel } from "./_components/EvalsPanel";
 import { ConfigTab } from "./_components/ConfigTab";
 import { VersionsTab } from "./_components/VersionsTab";
 import { StatsTab } from "./_components/StatsTab";
+import { ContextTab } from "./_components/ContextTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
@@ -31,6 +32,7 @@ export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; 
         {tab === "versions" && <VersionsTab skill={skill} />}
         {tab === "stats" && <StatsTab skill={skill} />}
         {tab === "evals" && <EvalsPanel ownerKind="skill" ownerId={skill.id} />}
+        {tab === "context" && <ContextTab key={skill.id} skill={skill} />}
       </div>
     </div>
   );

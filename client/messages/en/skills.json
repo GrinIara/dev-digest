@@ -45,7 +45,8 @@
       "preview": "Preview",
       "versions": "Versions",
       "stats": "Stats",
-      "evals": "Evals"
+      "evals": "Evals",
+      "context": "Context"
     }
   },
   "create": {

@@ -7,7 +7,7 @@ import type {
   RunTrace,
   UnifiedDiff,
 } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
+import { reviewPullRequest, countBlockers, renderProjectContext } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
@@ -16,6 +16,13 @@ import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 import { IntentClassifier } from './intent-classifier.js';
+import { ProjectContextService } from '../project-context/service.js';
+
+/** Resolved project-context docs, kept so a failed/cancelled run's trace can still report them. */
+type ProjectContextSummary = {
+  docs: { path: string; text: string; tokens: number }[];
+  skipped: { path: string; reason: 'missing' | 'unreadable' }[];
+};
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -55,6 +62,7 @@ export type RunOutcome = {
  */
 export class ReviewRunExecutor {
   private intent: IntentClassifier;
+  private projectContext: ProjectContextService;
 
   constructor(
     private container: Container,
@@ -62,6 +70,7 @@ export class ReviewRunExecutor {
     private agents: Container['agentsRepo'],
   ) {
     this.intent = new IntentClassifier(container, repo);
+    this.projectContext = new ProjectContextService(container);
   }
 
   /**
@@ -192,6 +201,9 @@ export class ReviewRunExecutor {
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
 
+    // Declared before `try` so the failure/cancel trace can still report it.
+    let projectContextSummary: ProjectContextSummary | undefined;
+
     try {
       // Resolve the agent's LLM provider. (container.llm throws if the provider
       // key is missing — caught below and persisted as a failed run.)
@@ -233,6 +245,37 @@ export class ReviewRunExecutor {
         .map((l) => ({ id: l.skill.id, body: l.skill.body }));
       if (skills.length > 0) runLog.info(`${skills.length} skill(s) bound to this agent`);
 
+      // Project context (fail-soft, A5): attached repo docs from the clone.
+      let contextDocs: { path: string; text: string; tokens: number }[] = [];
+      let contextSkipped: ProjectContextSummary['skipped'] = [];
+      let contextTotalTokens = 0;
+      try {
+        const resolved = await this.projectContext.resolveForRun({
+          workspaceId,
+          agentId: agent.id,
+          repo: { id: repo.id, owner: repo.owner, name: repo.name, clonePath: repo.clonePath },
+          enabledSkills: linkedSkills
+            .filter((l) => l.skill.enabled)
+            .map((l) => ({ id: l.skill.id, name: l.skill.name })),
+        });
+        if (resolved.status === 'not_cloned') {
+          runLog.info('Project context: repository not cloned — skipped');
+        } else {
+          contextDocs = resolved.docs;
+          contextSkipped = resolved.skipped;
+          contextTotalTokens = resolved.totalTokens;
+          for (const s of resolved.skipped) {
+            runLog.info(`Project context: ${s.path} ${s.reason === 'missing' ? 'missing in repo' : 'unreadable'} — skipped`);
+          }
+          if (contextDocs.length > 0) {
+            runLog.info(`Project context: ${contextDocs.length} document(s), ≈${contextTotalTokens} tokens attached`);
+          }
+          projectContextSummary = { docs: contextDocs, skipped: contextSkipped };
+        }
+      } catch {
+        runLog.info('Project context: unavailable — skipped');
+      }
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -251,6 +294,10 @@ export class ReviewRunExecutor {
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),
+        // Project context — omitted when nothing resolved (prompt byte-identical).
+        ...(contextDocs.length > 0
+          ? { specs: contextDocs.map(({ path, text }) => ({ path, text })) }
+          : {}),
         // T3 — repo skeleton, same omit-when-empty contract.
         ...(repoMap ? { repoMap } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
@@ -359,7 +406,9 @@ export class ReviewRunExecutor {
         ],
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        specs_read: contextDocs.map((d) => d.path),
+        specs_missing: contextSkipped.map((s) => s.path),
+        specs_tokens: Object.fromEntries(contextDocs.map((d) => [d.path, d.tokens])),
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -392,7 +441,15 @@ export class ReviewRunExecutor {
       await this.repo
         .saveRunTrace(
           runId,
-          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, intentCall),
+          this.traceFromBuffer(
+            runId,
+            pull,
+            agent,
+            '0/0 passed',
+            Date.now() - start,
+            intentCall,
+            projectContextSummary,
+          ),
         )
         .catch(() => undefined);
       this.container.runBus.complete(runId);
@@ -499,7 +556,9 @@ export class ReviewRunExecutor {
     grounding: string,
     durationMs = 0,
     intentCall?: IntentCallTrace,
+    projectContext?: ProjectContextSummary,
   ): RunTrace {
+    const ctx = projectContext;
     return {
       config: {
         agent: agent.name,
@@ -510,11 +569,23 @@ export class ReviewRunExecutor {
         source: 'local',
       },
       stats: { duration_ms: durationMs, tokens_in: 0, tokens_out: 0, cost_usd: null, findings: 0, grounding },
-      prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
+      prompt_assembly: {
+        system: agent.systemPrompt,
+        skills: null,
+        memory: null,
+        specs: ctx ? (renderProjectContext(ctx.docs) ?? null) : null,
+        user: '',
+      },
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],
-      specs_read: [],
+      specs_read: ctx ? ctx.docs.map((d) => d.path) : [],
+      ...(ctx
+        ? {
+            specs_missing: ctx.skipped.map((s) => s.path),
+            specs_tokens: Object.fromEntries(ctx.docs.map((d) => [d.path, d.tokens])),
+          }
+        : {}),
       log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
       // Present when intent classification already ran before this run
       // failed/cancelled (e.g. the agent's own LLM call failed); absent when

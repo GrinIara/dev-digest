@@ -73,3 +73,33 @@ describe("DiffTab — Smart/Original toggle (R6)", () => {
     expect(screen.getByText("src/config.test.ts")).toBeInTheDocument();
   });
 });
+
+describe("SPEC-2026-09-30-pr-risk-brief", () => {
+  it("AC-30: focusFile expands its Smart Diff group, opens the file and scrolls to it", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderWithIntl(<DiffTab prId="pr1" filesCount={2} files={FILES} focusFile="src/config.test.ts" />);
+
+    expect(screen.getByText("src/config.test.ts")).toBeInTheDocument();
+    expect(screen.queryByText("src/config.ts")).not.toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("AC-31: focusFile works in Original order too", () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    smartDiffState = { data: undefined, isError: true };
+    renderWithIntl(<DiffTab prId="pr1" filesCount={2} files={FILES} focusFile="src/config.ts" />);
+    expect(screen.getByText("src/config.ts")).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a focusFile that is not in the PR files", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderWithIntl(<DiffTab prId="pr1" filesCount={2} files={FILES} focusFile="nope/missing.ts" />);
+
+    expect(screen.getByText("Core")).toBeInTheDocument();
+    expect(screen.queryByText("src/config.ts")).not.toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+});

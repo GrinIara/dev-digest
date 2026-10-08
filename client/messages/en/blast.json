@@ -35,6 +35,12 @@
   "resync": "Resync",
   "resyncing": "Resyncing…",
   "resyncFailed": "Resync failed: {message}",
+  "discardLocalEdits": {
+    "title": "Discard local edits?",
+    "body": "Resync resets the repository copy to the default branch and discards these local edits.",
+    "cancel": "Cancel",
+    "confirm": "Discard and resync"
+  },
   "resyncNoChange": "Resync didn't change anything yet — try again in a moment.",
   "toggleSymbol": "Toggle callers of {symbol}",
   "graph": {

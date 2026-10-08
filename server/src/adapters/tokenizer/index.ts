@@ -8,7 +8,7 @@
  * lazy-initialised (loading the BPE ranks is the heavy part) and any failure
  * falls back to the `ceil(chars / 4)` heuristic — the renderer must never throw.
  *
- * Scope: in-process, ONLY under modules/repo-intel. Swappable in tests via a
+ * Scope: in-process, ONLY under modules/repo-intel and modules/project-context. Swappable in tests via a
  * mock counter (ContainerOverrides.tokenizer).
  */
 import { getEncoding, type Tiktoken } from 'js-tiktoken';

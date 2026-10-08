@@ -86,3 +86,13 @@ describe("SmartDiffGroups (R6)", () => {
     expect(docsHeader).toHaveAttribute("aria-expanded", "false");
   });
 });
+
+describe("SmartDiffGroups — expandRole", () => {
+  it("starts only the expandRole group expanded", () => {
+    renderWithIntl(<SmartDiffGroups groups={GROUPS} fileProps={noFileProps} expandRole="tests" />);
+    const headers = screen.getAllByRole("button").filter((h) => h.hasAttribute("aria-expanded"));
+    expect(headers.map((h) => h.getAttribute("aria-expanded"))).toEqual(["false", "true", "false", "false"]);
+    expect(screen.getByText("src/config.test.ts")).toBeInTheDocument();
+    expect(screen.queryByText("src/config.ts")).not.toBeInTheDocument();
+  });
+});

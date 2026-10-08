@@ -7,7 +7,12 @@ import { withTimeout } from '../../platform/resilience.js';
 import type * as schema from '../../db/schema.js';
 import type { ReviewRepository, PullRow } from './repository.js';
 import type { PrIntentRecord } from '@devdigest/shared';
-import { parseContextLinks, toFileHeaders, redactDetail } from './intent-links.js';
+import {
+  parseContextLinks,
+  toFileHeaders,
+  redactDetail,
+  type ParsedLinkedIssue,
+} from './intent-links.js';
 
 type RepoRow = typeof schema.repos.$inferSelect;
 
@@ -15,7 +20,7 @@ type RepoRow = typeof schema.repos.$inferSelect;
  *  `truncated` (§0.2) — mirrored here (not imported) because reviewer-core's
  *  own truncation caps are private; the classifier's OWN char-slicing in
  *  `assembleIntentPrompt` is still the actual content-safety cap either way. */
-const MAX_ISSUE_BODY_CHARS = 4000;
+export const MAX_ISSUE_BODY_CHARS = 4000;
 const MAX_DOC_BODY_CHARS = 6000;
 
 /**
@@ -27,7 +32,7 @@ const MAX_DOC_BODY_CHARS = 6000;
  * single source to `unreachable` quickly instead, without touching the
  * shared port/adapter (used by other, unrelated callers).
  */
-const GITHUB_ISSUE_FETCH_TIMEOUT_MS = 5000;
+export const GITHUB_ISSUE_FETCH_TIMEOUT_MS = 5000;
 
 /**
  * Overall bound on a fresh classification (`gatherContext` + the classifier's
@@ -63,7 +68,7 @@ function shortSha(sha: string | null): string {
  * origin via its path shape; a generic external tracker URL is classified by
  * host (Jira/Linear read as issue-tracker-ish, Notion/Google Docs as doc-ish).
  */
-function unsupportedLinkKind(ref: string): 'linked_issue' | 'linked_doc' {
+export function unsupportedLinkKind(ref: string): 'linked_issue' | 'linked_doc' {
   if (ref.includes('/issues/')) return 'linked_issue';
   if (ref.includes('/blob/')) return 'linked_doc';
   try {
@@ -75,6 +80,42 @@ function unsupportedLinkKind(ref: string): 'linked_issue' | 'linked_doc' {
     /* not a parseable URL — fall through to the doc-ish default below */
   }
   return 'linked_doc';
+}
+
+/**
+ * Fetch one linked GitHub issue as a `LinkedContext`: `used`/`truncated` on
+ * success, `unreachable` (redacted, capped detail) on any error or on the
+ * per-call GitHub bound. Never throws. Shared by the intent classifier and
+ * the PR brief so both apply the same caps and the same 5 s bound.
+ */
+export async function fetchLinkedIssue(
+  container: Container,
+  ref: RepoRef,
+  link: ParsedLinkedIssue,
+): Promise<LinkedContext> {
+  try {
+    const github = await container.github();
+    const issue = await withTimeout(
+      github.getIssue(ref, link.number),
+      GITHUB_ISSUE_FETCH_TIMEOUT_MS,
+    );
+    const body = issue.body ?? '';
+    return {
+      kind: 'linked_issue',
+      ref: link.ref,
+      status: body.length > MAX_ISSUE_BODY_CHARS ? 'truncated' : 'used',
+      title: issue.title,
+      body,
+      detail: null,
+    };
+  } catch (err) {
+    return {
+      kind: 'linked_issue',
+      ref: link.ref,
+      status: 'unreachable',
+      detail: redactDetail(err),
+    };
+  }
 }
 
 /**
@@ -104,29 +145,7 @@ export class IntentClassifier {
 
     for (const link of links) {
       if (link.kind === 'linked_issue') {
-        try {
-          const github = await this.container.github();
-          const issue = await withTimeout(
-            github.getIssue(ref, link.number),
-            GITHUB_ISSUE_FETCH_TIMEOUT_MS,
-          );
-          const body = issue.body ?? '';
-          out.push({
-            kind: 'linked_issue',
-            ref: link.ref,
-            status: body.length > MAX_ISSUE_BODY_CHARS ? 'truncated' : 'used',
-            title: issue.title,
-            body,
-            detail: null,
-          });
-        } catch (err) {
-          out.push({
-            kind: 'linked_issue',
-            ref: link.ref,
-            status: 'unreachable',
-            detail: redactDetail(err),
-          });
-        }
+        out.push(await fetchLinkedIssue(this.container, ref, link));
         continue;
       }
 

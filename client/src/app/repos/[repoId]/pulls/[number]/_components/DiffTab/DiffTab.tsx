@@ -34,9 +34,11 @@ interface DiffTabProps {
   canComment?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Path from `?file=`: expanded, scrolled to and opened (AC-30). Ignored if not in `files`. */
+  focusFile?: string | null;
 }
 
-export function DiffTab({ prId, filesCount, files, canComment, repoFullName, headSha }: DiffTabProps) {
+export function DiffTab({ prId, filesCount, files, canComment, repoFullName, headSha, focusFile }: DiffTabProps) {
   const t = useTranslations("prReview");
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
@@ -73,6 +75,10 @@ export function DiffTab({ prId, filesCount, files, canComment, repoFullName, hea
   const groups = smart.isError ? null : resolveSmartGroups(smart.data, files);
   const marked = markedPathsFrom(smart.isError ? undefined : smart.data, active);
   const totals = diffTotals(files);
+  const target = focusFile && files.some((f) => f.path === focusFile) ? focusFile : null;
+  const expandRole = target
+    ? groups?.find((g) => g.files.some((f) => f.path === target))?.role
+    : undefined;
 
   const renderCard = (f: (typeof active)[number]) => (
     <FindingCard
@@ -87,6 +93,7 @@ export function DiffTab({ prId, filesCount, files, canComment, repoFullName, hea
 
   const fileProps = (f: PrFile): Omit<Partial<FileCardProps>, "file" | "commenting"> => ({
     marked: marked.has(f.path),
+    focused: f.path === target,
     annotations: findingAnnotations(
       byFile.get(f.path) ?? [],
       renderCard,
@@ -132,7 +139,7 @@ export function DiffTab({ prId, filesCount, files, canComment, repoFullName, hea
         {t("smartDiff.reviewerOrdered")}
       </SectionLabel>
       {order === "smart" && groups ? (
-        <SmartDiffGroups groups={groups} commenting={commenting} fileProps={fileProps} />
+        <SmartDiffGroups groups={groups} commenting={commenting} fileProps={fileProps} expandRole={expandRole} />
       ) : (
         <DiffViewer files={files} commenting={commenting} fileProps={fileProps} />
       )}

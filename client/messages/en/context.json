@@ -19,6 +19,65 @@
   "editor": {
     "loadError": "Couldn’t load spec",
     "save": "Save",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "saveError": "Couldn't save — your changes are still in the editor",
+    "discardConfirm": "Discard unsaved changes?",
+    "discardBody": "Your edits to this document haven't been saved.",
+    "cancel": "Cancel",
+    "discard": "Discard",
+    "editorLabel": "Raw Markdown for {path}"
+  },
+  "page": {
+    "title": "Project Context",
+    "refresh": "Refresh",
+    "notCloned": "This repository hasn't been cloned yet — documents appear after the first sync.",
+    "emptyTitle": "No documents found",
+    "emptyBody": "No documents found under {roots}.",
+    "loadError": "Couldn't load project documents",
+    "docLoadError": "Couldn't load this document",
+    "selectDoc": "Select a document to preview it.",
+    "treeLabel": "Project documents",
+    "footer": "{count} files · ≈{tokens} tokens total",
+    "usedBy": "Used by {count, plural, one {# agent} other {# agents}}",
+    "approxTokens": "≈ {count} tokens",
+    "localEdit": "Local edit — not committed to GitHub",
+    "preview": "Preview",
+    "edit": "Edit",
+    "viewMode": "View mode",
+    "typeBadge": {
+      "specs": "specs",
+      "docs": "docs",
+      "insights": "insights"
+    },
+    "breadcrumbRoot": "Repository"
+  },
+  "list": {
+    "filterPlaceholder": "Filter documents…",
+    "noMatch": "No documents match",
+    "attachedOf": "{attached} of {total} attached",
+    "attachedCount": "{count} attached",
+    "missing": "Missing in repo",
+    "detach": "Detach",
+    "viaSkill": "via skill {name}",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "preview": "Preview",
+    "attached": "Attached",
+    "updateError": "Couldn't update project context — try again",
+    "footerTokens": "≈ {count} tokens",
+    "agentHeading": "Project context",
+    "agentSubtitle": "Order matters — earlier docs appear earlier in the assembled <code>## Project context</code> block. Toggle to attach.",
+    "injectedNote": "Injected as an untrusted block (<code>## Project context</code>) into every run."
+  },
+  "drawer": {
+    "skillHeading": "Project context to use",
+    "skillSubtitle": "Any agent using this skill inherits these documents.",
+    "serializesAs": "Serializes as",
+    "group": {
+      "specs": "Project specifications",
+      "docs": "Project docs",
+      "insights": "Project insights"
+    },
+    "selectRepo": "Select a repository in the sidebar to attach documents."
   }
 }

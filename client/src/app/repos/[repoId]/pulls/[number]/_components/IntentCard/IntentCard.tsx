@@ -11,7 +11,7 @@ import { usePrIntent, useReclassifyIntent } from "../../../../../../../lib/hooks
 import { missingSources, sourceLabel } from "./helpers";
 import { s } from "./styles";
 
-export function IntentCard({ prId }: { prId: string }) {
+export function IntentCard({ prId, hideRiskAreas = false }: { prId: string; hideRiskAreas?: boolean }) {
   const t = useTranslations("intent");
   const { data, isLoading, isError, refetch } = usePrIntent(prId);
   const reclassify = useReclassifyIntent(prId);
@@ -121,7 +121,7 @@ export function IntentCard({ prId }: { prId: string }) {
         </div>
       </div>
 
-      {intent.risk_areas.length > 0 && (
+      {!hideRiskAreas && intent.risk_areas.length > 0 && (
         <div style={s.chipRow}>
           <span style={s.columnLabel}>{t("riskAreas")}</span>
           {intent.risk_areas.map((area, i) => (

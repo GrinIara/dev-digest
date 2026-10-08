@@ -16,6 +16,11 @@ export {
   assemblePrompt,
   wrapUntrusted,
   INJECTION_GUARD,
+  renderProjectContext,
+  renderProjectContextDoc,
+  renderProjectContextHeader,
+  PROJECT_CONTEXT_FRAMING,
+  type ProjectContextDoc,
   type PromptParts,
   type AssembledPrompt,
   type IntentPromptSlot,
@@ -41,6 +46,19 @@ export {
   type IntentPromptResult,
   type IntentClassifierOutcome,
 } from './intent.js';
+
+// PR risk brief — one structured LLM call over pre-gathered facts.
+export {
+  generateBrief,
+  assembleBriefPrompt,
+  type BriefFileFact,
+  type BriefBlastFacts,
+  type BriefSpecDoc,
+  type BriefIssue,
+  type BriefGeneratorInput,
+  type BriefPromptResult,
+  type BriefGeneratorOutcome,
+} from './brief.js';
 
 // Citation grounding — the mandatory mechanical gate for diff findings.
 export { groundFindings, groundingSummary, type GroundingResult } from './grounding.js';

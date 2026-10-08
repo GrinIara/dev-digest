@@ -41,7 +41,10 @@ export function useRepoIntelStatus(repoId: string | null | undefined, poll = fal
 export function useResyncRepoIntel(repoId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.post<{ status: string }>(`/repos/${repoId}/resync`),
+    mutationFn: (vars?: { discardLocalEdits?: boolean }) =>
+      api.post<{ status: string }>(
+        `/repos/${repoId}/resync${vars?.discardLocalEdits ? "?discard_local_edits=true" : ""}`,
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repo-intel-state", repoId] });
     },
