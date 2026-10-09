@@ -14,9 +14,13 @@ services:
     image: ghcr.io/berriai/litellm:main-stable
     container_name: devdigest-eval-litellm
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     environment:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in the environment}
+      # LiteLLM refuses to boot without a master key. Reusing the OpenRouter key means both eval
+      # clients — the Agent SDK (ANTHROPIC_AUTH_TOKEN) and the content tier (OpenAI apiKey) —
+      # already send the right bearer, so no client change is needed.
+      LITELLM_MASTER_KEY: ${OPENROUTER_API_KEY}
     volumes:
       - ./litellm.config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
