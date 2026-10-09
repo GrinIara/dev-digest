@@ -37,10 +37,48 @@ export function agentContent(agentName: string): string {
   return stripFrontmatter(readFileSync(f, "utf8"));
 }
 
+/** The raw frontmatter block of an agent definition ("" when it has none). */
+function agentFrontmatter(agentName: string): string {
+  const f = join(AGENTS_DIR, `${agentName}.md`);
+  if (!existsSync(f)) throw new Error(`agent not found: ${f}`);
+  const md = readFileSync(f, "utf8");
+  const fmEnd = md.startsWith("---") ? md.indexOf("\n---", 3) : -1;
+  return fmEnd !== -1 ? md.slice(0, fmEnd) : "";
+}
+
+/**
+ * The skills an agent PRELOADS via frontmatter (`skills:` as a YAML list or `[a, b]`). Claude Code
+ * injects each one's SKILL.md into the subagent's context at startup, and agent bodies rely on it
+ * ("the preloaded … skills") — so an eval that injects only the body tests a different agent.
+ */
+export function agentSkills(agentName: string): string[] {
+  const fm = agentFrontmatter(agentName);
+  const inline = fm.match(/^skills:\s*\[(.*)\]\s*$/m);
+  if (inline) return inline[1].split(",").map((s) => s.trim()).filter(Boolean);
+  const block = fm.match(/^skills:\s*\n((?:[ \t]+-[^\n]*\n?)+)/m);
+  if (!block) return [];
+  return block[1]
+    .split("\n")
+    .map((l) => l.replace(/^[ \t]+-\s*/, "").trim())
+    .filter(Boolean);
+}
+
+/** The preloaded skills' SKILL.md bodies, formatted for appending to the agent's system prompt. */
+export function agentSkillsContent(agentName: string): string {
+  return agentSkills(agentName)
+    .map((name) => {
+      const f = join(SKILLS_DIR, name, "SKILL.md");
+      if (!existsSync(f)) throw new Error(`skill '${name}' preloaded by agent '${agentName}' not found: ${f}`);
+      return `\n\n## Preloaded skill: ${name}\n\n${stripFrontmatter(readFileSync(f, "utf8"))}`;
+    })
+    .join("");
+}
+
 // Tools the eval refuses to hand a subagent: evals run with bypassPermissions against the LIVE
 // repo, so a mutating tool could take real actions. An agent that declares these still runs — it
-// just runs read-only, which is all an eval ever needs.
-const MUTATING_TOOLS = new Set(["Write", "Edit", "NotebookEdit", "Bash"]);
+// just runs read-only, which is all an eval ever needs. Exported so runClaude can also DISALLOW
+// them: allowedTools only pre-approves, it does not remove the rest under bypassPermissions.
+export const MUTATING_TOOLS = new Set(["Write", "Edit", "NotebookEdit", "Bash"]);
 const READONLY_FALLBACK = ["Read", "Grep", "Glob"];
 
 /**
@@ -51,12 +89,7 @@ const READONLY_FALLBACK = ["Read", "Grep", "Glob"];
  * grant collapses to the read-only fallback rather than handing over Write/Bash on the live repo.
  */
 export function agentTools(agentName: string): string[] {
-  const f = join(AGENTS_DIR, `${agentName}.md`);
-  if (!existsSync(f)) throw new Error(`agent not found: ${f}`);
-  const md = readFileSync(f, "utf8");
-  const fmEnd = md.startsWith("---") ? md.indexOf("\n---", 3) : -1;
-  const frontmatter = fmEnd !== -1 ? md.slice(0, fmEnd) : "";
-  const line = frontmatter.match(/^tools:\s*(.+)$/m);
+  const line = agentFrontmatter(agentName).match(/^tools:\s*(.+)$/m);
   if (!line) return [];
   const raw = line[1].trim();
   if (raw === "*" || /all tools/i.test(raw)) return [...READONLY_FALLBACK];

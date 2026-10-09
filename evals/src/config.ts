@@ -21,6 +21,11 @@ export const FLAKY_LOW = 0.2; // pass rate strictly inside (20%, 80%) is "flaky"
 export const FLAKY_HIGH = 0.8;
 export const COST_REGRESSION_RATIO = 1.25; // candidate mean tokens > 125% of baseline
 
+// --- Run budget -------------------------------------------------------------
+// Hard cap on -n for eval:repeat and eval:benchmark (per config) — LLM sessions are expensive and
+// 2 runs is enough to catch a blatantly flaky case. Raise deliberately for a fuller stability run.
+export const MAX_RUNS = 2;
+
 // --- Tool allow-lists -------------------------------------------------------
 // Subagent-spawning tool name varies by harness; count both.
 export const SPAWN_TOOLS = new Set(["Task", "Agent"]);

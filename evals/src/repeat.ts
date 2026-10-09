@@ -14,9 +14,17 @@ import { mkdirSync, writeFileSync, existsSync, statSync, readdirSync } from "nod
 import { join } from "node:path";
 import { GREEN, RED, DIM, RESET, rateColor } from "./ansi.js";
 import { gitInfo } from "./git.js";
+import { MAX_RUNS } from "./config.js";
 import { countTests, runVitestOnce } from "./run-vitest.js";
 import { RESULTS_DIR } from "./artifacts/paths.js";
-import { aggregate, loadRecords, recordCount, type NodeAggregate, type Stats } from "./records/stats.js";
+import {
+  aggregate,
+  loadRecords,
+  recordCount,
+  type EvalRecord,
+  type NodeAggregate,
+  type Stats,
+} from "./records/stats.js";
 
 /**
  * vitest treats a path pattern as a SUBSTRING filter, so a bare `agents/architecture-reviewer`
@@ -49,6 +57,32 @@ function resolveEvalPatterns(args: string[]): string[] {
   return out;
 }
 
+/**
+ * results/records.jsonl is shared, so "every line appended since start" also picks up records
+ * from any OTHER eval process writing at the same time (e.g. strict and lite repeats run in
+ * parallel — each label then held both agents' records and delta compared A with A). Keep only
+ * records this invocation could have produced: test file matches one of its path patterns (the
+ * same substring rule vitest applies) and, when given, the full test name matches -t.
+ * Two concurrent repeats of the SAME files still can't be told apart — run those sequentially.
+ */
+function ownRecordFilter(args: string[]): (r: EvalRecord) => boolean {
+  const paths: string[] = [];
+  let namePattern: RegExp | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "-t" || a === "--testNamePattern") namePattern = new RegExp(args[++i]);
+    else if (a.startsWith("--testNamePattern=")) namePattern = new RegExp(a.slice("--testNamePattern=".length));
+    else if (!a.startsWith("-")) paths.push(a.replace(/^\.\//, ""));
+  }
+  return (r) => {
+    const sep = r.nodeid.indexOf(" > ");
+    const file = sep === -1 ? r.nodeid : r.nodeid.slice(0, sep);
+    const name = sep === -1 ? "" : r.nodeid.slice(sep + 3);
+    if (paths.length && !paths.some((p) => file.includes(p))) return false;
+    return !namePattern || namePattern.test(name);
+  };
+}
+
 const pct = (rate: number) => `${Math.round(rate * 100)}%`;
 const statLine = (label: string, s: Stats) =>
   `      ${label}: ${s.mean.toFixed(0)} ± ${s.stddev.toFixed(0)} [${s.min}–${s.max}]`;
@@ -70,10 +104,7 @@ function printTest(agg: NodeAggregate, times: number): void {
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
-  // Cap runs at 2 to keep token spend bounded — LLM sessions are expensive, and 2 runs is enough
-  // to catch a blatantly flaky case. Bump MAX_TIMES if you deliberately want a fuller stability run.
-  const MAX_TIMES = 2;
-  let times = MAX_TIMES;
+  let times = MAX_RUNS;
   let label: string | undefined;
   const vitestArgs: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -83,15 +114,16 @@ async function main(): Promise<void> {
     else vitestArgs.push(a);
   }
   if (vitestArgs.length === 0 || !Number.isFinite(times) || times < 1) {
-    console.error("usage: pnpm eval:repeat <vitest pattern> [-n times<=2] [-t testNamePattern] [--label name]");
+    console.error(`usage: pnpm eval:repeat <vitest pattern> [-n times<=${MAX_RUNS}] [-t testNamePattern] [--label name]`);
     process.exit(1);
   }
-  if (times > MAX_TIMES) {
-    console.error(`  ${DIM}capping -n ${times} → ${MAX_TIMES} (token economy)${RESET}`);
-    times = MAX_TIMES;
+  if (times > MAX_RUNS) {
+    console.error(`  ${DIM}capping -n ${times} → ${MAX_RUNS} (token economy)${RESET}`);
+    times = MAX_RUNS;
   }
   vitestArgs.splice(0, vitestArgs.length, ...resolveEvalPatterns(vitestArgs));
 
+  const isOwn = ownRecordFilter(vitestArgs);
   const startLine = recordCount();
   let line = startLine;
   const nCases = countTests(vitestArgs);
@@ -99,7 +131,7 @@ async function main(): Promise<void> {
   console.log(`  ${nCases ?? "?"} test case(s) × ${times} runs  (full traces in results/outputs/)\n`);
   for (let i = 1; i <= times; i++) {
     const captured = await runVitestOnce(`run ${i}/${times}`, vitestArgs);
-    const fresh = loadRecords(line);
+    const fresh = loadRecords(line).filter(isOwn);
     line = recordCount();
     if (fresh.length === 0) {
       console.log(`  run ${i}/${times}  ${RED}no records — run crashed${RESET}`);
@@ -111,7 +143,7 @@ async function main(): Promise<void> {
     console.log(`  run ${i}/${times}  ${mark} ${passed}/${fresh.length} cases`);
   }
 
-  const records = loadRecords(startLine);
+  const records = loadRecords(startLine).filter(isOwn);
   const tests = aggregate(records);
   const nodeids = Object.keys(tests).sort();
 

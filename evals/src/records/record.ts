@@ -31,6 +31,12 @@ export interface RecordData {
   verdict?: Verdict;
   grounded?: number;
   threshold?: number;
+  /**
+   * The case's own pass/fail, for cases scored by trace asserts rather than grounding or a judge
+   * (the workflow tier). Without it the outcome falls back to "the session didn't error", which
+   * would count a trace case whose asserts failed as a pass.
+   */
+  passed?: boolean;
   extra?: Record<string, unknown>;
 }
 
@@ -40,18 +46,20 @@ export interface RecordData {
  * from being silently empty.
  */
 export function record(label: string, data: RecordData): void {
-  const { result, verdict, grounded, threshold, extra } = data;
+  const { result, verdict, grounded, threshold, passed, extra } = data;
   const state = expect.getState();
   const nodeid = `${state.testPath ?? "?"} > ${state.currentTestName ?? label}`;
 
-  // outcome: grounding gate failure short-circuits to false; else the judge threshold; else
-  // "did the run itself succeed" (workflow tests have neither grounding nor a judge verdict).
+  // outcome: an explicit `passed` (workflow trace asserts) wins; else grounding gate failure
+  // short-circuits to false; else the judge threshold; else "did the run itself succeed".
   const outcome =
-    grounded !== undefined && grounded < 1
-      ? false
-      : verdict && threshold !== undefined
-        ? verdict.score >= threshold
-        : !result.isError;
+    passed !== undefined
+      ? passed
+      : grounded !== undefined && grounded < 1
+        ? false
+        : verdict && threshold !== undefined
+          ? verdict.score >= threshold
+          : !result.isError;
 
   const outDir = join(OUTPUTS, RUN_ID);
   mkdirSync(outDir, { recursive: true });
@@ -78,6 +86,8 @@ export function record(label: string, data: RecordData): void {
       subagents: result.subagents,
       skills: result.skillsInvoked,
       reads: result.filesRead,
+      blocked: result.toolsBlocked,
+      writes: result.writesAttempted,
     },
     output_file: outputFile,
     ...extra,

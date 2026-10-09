@@ -20,6 +20,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [pr-self-review](pr-self-review/SKILL.md) | Full-stack | Pre-PR hygiene check on the local diff: dynamically dispatches to eligible skills, triages severity, blocks push/PR on unresolved Critical findings |
 | [ears-requirements](ears-requirements/SKILL.md) | Specs | EARS acceptance criteria: five patterns, vague → testable, AC-N traceability, `Verify:` levels |
 | [ux-review](ux-review/SKILL.md) | Specs | UX review of designs for specs: flow walk, screen-state checklist, Nielsen heuristics, WCAG 2.2 AA minimum |
+| [dependency-checker](dependency-checker/SKILL.md) | Shared | Repo-wide npm dependency audit: package map, sizes, outdated/vulnerable/unused deps, drift, prioritised P0–P3 report in `docs/reference/` |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Shared | Read/append per-module Insights.md with substantial, non-obvious findings |
 | [implement](implement/SKILL.md) | Workflow | `/implement <plan>` — runs an approved plan: implementer → completeness check → architecture/security review → fix loop with delta re-review → final plan-verifier; resumable run log; user-invoked only |

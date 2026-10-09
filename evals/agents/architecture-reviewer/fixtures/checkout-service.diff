@@ -1,33 +1,38 @@
-diff --git a/server/src/modules/checkout/domain/checkout.ts b/server/src/modules/checkout/domain/checkout.ts
-index 1111111..2222222 100644
---- a/server/src/modules/checkout/domain/checkout.ts
-+++ b/server/src/modules/checkout/domain/checkout.ts
-@@ -1,5 +1,6 @@
-+import type { FastifyReply } from "fastify";
- export interface CheckoutOrder {
-   id: string;
-   total: number;
- }
+diff --git a/server/src/vendor/shared/contracts/checkout.ts b/server/src/vendor/shared/contracts/checkout.ts
+index 1a2b3c4..5d6e7f8 100644
+--- a/server/src/vendor/shared/contracts/checkout.ts
++++ b/server/src/vendor/shared/contracts/checkout.ts
+@@ -1,11 +1,16 @@
+ import { z } from "zod";
++import { FastifyReply } from "fastify";
 
--export function priceOrder(order: CheckoutOrder): number {
-+export function priceOrder(order: CheckoutOrder, reply?: FastifyReply): number {
+ export const CheckoutOrder = z.object({
+   id: z.string(),
+   total: z.number().nonnegative(),
+ });
+ export type CheckoutOrder = z.infer<typeof CheckoutOrder>;
+
+ export function priceOrder(order: CheckoutOrder): number {
    return order.total;
  }
-
++
++export function rejectCheckout(reply: FastifyReply, reason: string) {
++  return reply.code(422).send({ error: reason });
++}
 diff --git a/server/src/modules/checkout/service.ts b/server/src/modules/checkout/service.ts
-index 3333333..4444444 100644
+index 9a8b7c6..3d2e1f0 100644
 --- a/server/src/modules/checkout/service.ts
 +++ b/server/src/modules/checkout/service.ts
-@@ -1,10 +1,14 @@
- import { priceOrder } from "./domain/checkout.js";
-+import { PgCheckoutRepository } from "./repository.js";
+@@ -1,8 +1,12 @@
+ import { priceOrder, type CheckoutOrder } from "../../vendor/shared/contracts/checkout.js";
++import { PgCheckoutRepository } from "../../adapters/postgres/checkout-repository.js";
 
  export class CheckoutService {
-+  private repo = new PgCheckoutRepository();
++  private readonly orders = new PgCheckoutRepository();
 +
-   async checkout(order: { id: string; total: number }) {
-     const price = priceOrder(order);
-+    await this.repo.save(order.id, price);
-     return { price };
+   async checkout(order: CheckoutOrder) {
+     const total = priceOrder(order);
++    await this.orders.save(order.id, total);
+     return { id: order.id, total };
    }
  }

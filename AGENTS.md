@@ -30,6 +30,7 @@ and web run on the host.
 - Cross-package sharing is via tsconfig path aliases (e.g. `@devdigest/reviewer-core` → `../reviewer-core/src`), never a published/npm dependency between these packages.
 - `main` is the **course starter state** — minimal and working end-to-end. Lesson/feature work happens in forks, not on `main` (see git history: `revert: restore main to the starter state, homework belongs in forks`).
 - Each package's test suite runs only when that package (or a package it depends on at type-check time) changes — see `TESTING.md` for the suite-to-workflow map.
+- When the user asks to record, remember or "зафіксувати" a finding/gotcha, invoke the `engineering-insights` skill first — never hand-edit a package's `Insights.md`. The skill enforces evidence-only, de-duplicated, append-only entries; every later session reads `Insights.md` as fact.
 
 ## Gotchas
 - The server does **not** apply DB migrations on boot — `relation does not exist` errors mean run `cd server && pnpm db:migrate`.

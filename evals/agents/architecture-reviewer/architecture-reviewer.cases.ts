@@ -3,83 +3,99 @@ import { fixtureReader } from "../../src/index.js";
 
 const fx = fixtureReader(import.meta.url);
 
-const REVIEW_PROMPT = `Audit this diff against DevDigest's documented structural contracts.
+// The fixtures describe proposed changes that are NOT applied to the working tree, so the agent's
+// default review set (git diff vs merge-base) would review the wrong thing. Every prompt hands it
+// the diff as the review set and points it at the real rule sources, which DO exist in the repo.
+const reviewPrompt = (diff: string) => `Review the proposed change below. It is not applied to the working tree, so treat this diff as the complete review set: do not review git status / git diff, and do not report that the touched files are missing on disk. Read the repo's documented rule sources as usual, then return your Architecture Review Report.
 
-${fx("checkout-service.diff")}`;
+${diff}`;
 
-// A second real diff whose violations map onto DevDigest-SPECIFIC rule names
-// (`reviewer-core-zero-io`, `reviewer-core-ground-findings-gate`) that a competent model will
-// describe in prose but will not spontaneously name unless the agent forces a citation. This is
-// the discriminating case for the strict-vs-lite A/B: both variants should FIND both problems,
-// but only the strict variant (which keeps the "cite the exact documented rule per finding" hard
-// rule) should reliably emit the identifier. The checkout diff's textbook violations don't
-// discriminate — the model volunteers `inward-only-dependencies`/`di-discipline` either way.
-const REVIEWER_CORE_PROMPT = `Audit this diff against DevDigest's documented structural contracts.
+// Two deliberate violations, both mapped to rules the agent's sources document:
+// - a value import of FastifyReply in the domain/contracts layer (server/src/vendor/shared/contracts)
+//   — backend-onion-architecture SKILL.md layer map "No imports of Fastify"; a dependency-direction
+//   violation, so critical. It is a value import on purpose: the agent caps a type-only cross-layer
+//   import at minor.
+//   The change is server-only, so a missing client/ mirror (XP2) is an expected side finding. It is
+//   not mirrored on purpose: a client copy importing fastify would itself be a problem.
+//   The agent's catalog has no check ID for contracts importing fastify (AB2 covers service.ts
+//   only), so the citation practice accepts the skill's rule as the source and does NOT accept AB2
+//   or the mirroring rule as the cited rule.
+// - `new PgCheckoutRepository()` (a concrete class under src/adapters/) inside service.ts instead
+//   of container.<port> — check AB3, critical. NOT the module's own repository.ts facade, which
+//   SKILL.md documents as legitimately constructed by service.ts.
+const CHECKOUT_PROMPT = reviewPrompt(fx("checkout-service.diff"));
 
-${fx("reviewer-core-gate.diff")}`;
+// Violations that map onto reviewer-core-specific rules (RC1 + the documented mandatory
+// groundFindings gate) — rules a competent model describes in prose but rarely names unless the
+// agent forces a citation. Discriminates the strict vs lite variants on citation.
+const REVIEWER_CORE_PROMPT = reviewPrompt(fx("reviewer-core-gate.diff"));
 
-// A diff that violates NO documented rule (a pure local-variable rename inside a domain file, no
-// new imports, no cross-layer edges). A grounded reviewer should report zero violations. This
-// surfaces the COST of relaxing the citation rule: freed from "every finding must name a
-// documented contract", the lite variant is more prone to fabricating a judgment/best-practice
-// finding where the strict variant stays silent.
-const BENIGN_PROMPT = `Audit this diff against DevDigest's documented structural contracts.
+// A diff that violates no documented rule. Surfaces the COST of relaxing the citation rule: freed
+// from "every finding is traceable to a rule source", the lite variant may invent a finding.
+const BENIGN_PROMPT = reviewPrompt(fx("benign-refactor.diff"));
 
-${fx("benign-refactor.diff")}`;
-
-// Shared across the strict (architecture-reviewer) and relaxed (architecture-reviewer-lite)
-// variants so the two agents are graded on the exact same task — the only thing that should
-// move between the two runs is whether "cites the specific documented rule" keeps passing.
+// Shared by architecture-reviewer (strict) and architecture-reviewer-lite (relaxed citation): same
+// prompts, fixtures, practices, thresholds and maxTurns. Only the injected agent body differs, so
+// the citation practices are the ones expected to move between the two runs.
 export const cases: AgentCase[] = [
   {
-    name: "flags both violations in the checkout diff with severity and a citable rule",
+    name: "checkout diff: finds both violations, rates severity, cites the documented rule",
     kind: "quality",
-    prompt: REVIEW_PROMPT,
+    prompt: CHECKOUT_PROMPT,
+    // Cheap deterministic gate: both offending symbols must at least be mentioned before the judge runs.
+    grounding: ["FastifyReply", "PgCheckoutRepository"],
     practices: [
-      "flags the domain file (checkout.ts) importing a type from 'fastify' as a violation of the inward-only dependency rule between Domain and Presentation layers",
-      "flags the `new PgCheckoutRepository()` call inside service.ts as a violation of DI discipline (concrete adapters/repositories must be constructed only in the composition root / container)",
-      "names the specific documented rule identifier for EVERY finding (e.g. `inward-only-dependencies`, `di-discipline`) rather than describing the problem only in prose",
-      "assigns a severity (critical/high/medium/low/info) to each finding",
-      "quotes the offending line verbatim as evidence for each finding, not a paraphrase",
-      "ends with an explicit PASS/FAIL gate verdict based on whether any critical or high findings exist",
+      // Detection
+      "reports as a finding that the domain/contracts file `server/src/vendor/shared/contracts/checkout.ts` imports `FastifyReply` from 'fastify', i.e. the innermost layer depends on the HTTP/delivery framework (dependency direction pointing outward)",
+      "reports as a finding that `server/src/modules/checkout/service.ts` imports the concrete adapter `PgCheckoutRepository` from `src/adapters/` and constructs it with `new` inside the service, instead of resolving it through the DI container (`container.<port>` in `src/platform/container.ts`)",
+      // Severity
+      "assigns the FastifyReply-in-domain finding an explicit severity of `critical` (a dependency-direction violation; the import is a value import, not `import type`)",
+      "assigns the `new PgCheckoutRepository()` finding an explicit severity of `critical` (check AB3's default)",
+      // Rule citation — the practices the strict-vs-lite A/B is about
+      "for the FastifyReply finding, cites a documented rule that actually covers the domain/contracts layer, with a file or file:line reference: the backend-onion-architecture skill's layer map ('Domain / contracts … No imports of Fastify') or its 'Dependencies point inward' rule. Saying that no catalog check ID covers this case is fine as long as that source is cited. Citing only AB2 (which is about modules/*/service.ts) or only the vendor/shared mirroring rule (XP2 / server/AGENTS.md) does NOT count, and neither does a prose-only description",
+      "for the PgCheckoutRepository finding, names a specific documented rule rather than only describing the problem in prose: check ID `AB3` and/or the documented source (e.g. the backend-onion-architecture skill's 'service.ts importing a concrete adapter class … instead of going through container.<port>', or server/docs/architecture.md), with a file or file:line reference",
+      // Consistency with the findings
+      "the overall verdict is `blocking` (at least one critical finding)",
     ],
     threshold: 1.0,
     maxTurns: 25,
   },
   {
-    name: "does not fabricate an architecture finding for the out-of-scope security-shaped change",
+    name: "checkout diff: stays in scope and does not misflag the repository convention",
     kind: "quality",
-    prompt: REVIEW_PROMPT,
+    prompt: CHECKOUT_PROMPT,
     practices: [
-      "does not invent an architecture-contract violation for the optional `reply?: FastifyReply` parameter beyond the inward-only-dependencies import issue itself (no runtime bug/security finding fabricated as an architecture rule)",
-      "stays scoped to structural/layering/DI findings and does not comment on naming, style, or test coverage",
+      "if it reports the missing client/ mirror of contracts/checkout.ts (XP2), it reports it as a separate finding; it does not merge the FastifyReply dependency-direction finding into it or replace that finding with it",
+      "does not treat a module constructing its own `repository.ts` facade as a violation in general; the DI finding is specifically about a concrete class from `src/adapters/`",
+      "does not raise naming, style, test-coverage or security comments as architecture findings (anything like that is only under the Out of scope section, not counted in the verdict)",
     ],
     threshold: 1.0,
     maxTurns: 25,
   },
   {
-    name: "cites the DevDigest-specific rule identifier for reviewer-core violations",
+    name: "reviewer-core diff: finds the I/O import and the skipped grounding gate, cites the rule",
     kind: "quality",
     prompt: REVIEWER_CORE_PROMPT,
+    grounding: ["readFileSync", "groundFindings"],
     practices: [
-      "flags the `import { readFileSync } from 'node:fs'` added to reviewer-core/src/pipeline/run.ts as a violation (reviewer-core must do no I/O except the injected LLMProvider)",
-      "flags that runPipeline now returns `deduped` directly, skipping the mandatory `groundFindings()` gate before emitting findings",
-      "names the exact documented rule identifier `reviewer-core-zero-io` for the fs-import finding rather than only describing it in prose",
-      "names the exact documented rule identifier `reviewer-core-ground-findings-gate` for the skipped-gate finding rather than only describing it in prose",
-      "quotes the offending line verbatim as evidence for each finding, not a paraphrase",
-      "ends with an explicit PASS/FAIL gate verdict based on whether any critical or high findings exist",
+      "reports the `import { readFileSync } from \"node:fs\"` added to reviewer-core/src/pipeline/run.ts as a violation of reviewer-core purity (no filesystem/network/DB I/O)",
+      "reports that runPipeline now returns `deduped` without passing findings through `groundFindings()`, the documented mandatory citation gate",
+      "assigns the fs-import finding an explicit severity of `critical` (check RC1's default)",
+      "for the fs-import finding, names check ID `RC1` and/or its documented source (reviewer-core/AGENTS.md, reviewer-core/docs/architecture.md or the backend-onion-architecture skill) rather than only describing it in prose",
+      "for the skipped-gate finding, cites the documented source of the grounding rule (reviewer-core/AGENTS.md 'Grounding is mandatory…' or reviewer-core/docs/architecture.md 'the mandatory citation gate') rather than only describing it in prose",
+      "the overall verdict is `blocking`",
     ],
     threshold: 1.0,
     maxTurns: 25,
   },
   {
-    name: "does not fabricate a documented-rule violation for a benign rename",
+    name: "benign diff: reports no architecture violation",
     kind: "quality",
     prompt: BENIGN_PROMPT,
     practices: [
-      "reports no violations for the benign rename (or records only `info`-level, non-blocking observations) — it does not invent a critical/high/medium finding",
-      "does not fabricate a documented-rule violation where the diff violates none of the checked rules",
-      "the final gate verdict is PASS",
+      "reports no findings in the Findings section, or only `nit`-level items — no critical/major/minor finding is invented for a local-variable rename",
+      "does not present a generic best-practice opinion as a violated rule",
+      "the overall verdict is `pass`",
     ],
     threshold: 1.0,
     maxTurns: 25,

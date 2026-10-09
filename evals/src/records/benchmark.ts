@@ -4,7 +4,7 @@
  * configuration, the delta, a per-practice matrix, and deterministic analyst flags. This is the
  * with_skill vs without_skill comparison from skill-creator v2.
  *
- *   pnpm eval:benchmark skills/engineering-insights -n 5
+ *   pnpm eval:benchmark skills/engineering-insights -n 2
  *
  * Skills/agents only — a "no artifact" baseline is meaningless for the workflow tier, which has
  * its own control-vs-treatment design; workflow patterns are refused.
@@ -14,7 +14,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { GREEN, RED, YELLOW, DIM, RESET } from "../ansi.js";
 import { countTests, runVitestOnce } from "../run-vitest.js";
-import { EVAL_MODEL, EVAL_JUDGE_MODEL } from "../config.js";
+import { EVAL_MODEL, EVAL_JUDGE_MODEL, MAX_RUNS } from "../config.js";
 import { RESULTS_DIR } from "../artifacts/paths.js";
 import { gitInfo } from "../git.js";
 import {
@@ -71,7 +71,7 @@ const cell = (s: Stats) => `${s.mean.toFixed(0)} ± ${s.stddev.toFixed(0)} [${s.
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
-  let times = 5;
+  let times = MAX_RUNS;
   let label: string | undefined;
   const vitestArgs: string[] = [];
   for (let i = 0; i < argv.length; i++) {
@@ -81,8 +81,12 @@ async function main(): Promise<void> {
     else vitestArgs.push(a);
   }
   if (vitestArgs.length === 0 || !Number.isFinite(times) || times < 1) {
-    console.error("usage: pnpm eval:benchmark <vitest pattern> [-n runs] [--label name]");
+    console.error(`usage: pnpm eval:benchmark <vitest pattern> [-n runs<=${MAX_RUNS}] [--label name]`);
     process.exit(1);
+  }
+  if (times > MAX_RUNS) {
+    console.error(`  ${DIM}capping -n ${times} → ${MAX_RUNS} per config (token economy)${RESET}`);
+    times = MAX_RUNS;
   }
   if (vitestArgs.some((a) => a.includes("workflow"))) {
     console.error(
