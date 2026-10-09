@@ -21,7 +21,8 @@
  * evals)" (plus a ::notice:: annotation) and simply not run.
  *
  * Emits GitHub Actions step outputs to $GITHUB_OUTPUT (stdout when run locally):
- *   content_paths  space-separated vitest filters for the skill + agent tiers ("" = nothing to run)
+ *   skill_paths    space-separated vitest filters for the skill tier ("" = nothing to run)
+ *   agent_paths    space-separated vitest filters for the agent tier ("" = nothing to run)
  *   run_workflow   "true" | "false"
  * Pure filesystem + string work — no deps.
  */
@@ -147,11 +148,11 @@ const skippedAgents = sorted(agentNames).filter((n) => !hasEvals("agents", n));
 const skippedWorkflow = runWorkflow && !workflowHasEvals;
 if (skippedWorkflow) runWorkflow = false;
 
-const contentPaths = [...skills.map((n) => `skills/${n}/`), ...agents.map((n) => `agents/${n}/`)];
 
 const out = process.env.GITHUB_OUTPUT;
 const write = (k, v) => (out ? appendFileSync(out, `${k}=${v}\n`) : console.log(`${k}=${v}`));
-write("content_paths", contentPaths.join(" "));
+write("skill_paths", skills.map((n) => `skills/${n}/`).join(" "));
+write("agent_paths", agents.map((n) => `agents/${n}/`).join(" "));
 write("run_workflow", String(runWorkflow));
 
 // Human-readable summary in the step log.

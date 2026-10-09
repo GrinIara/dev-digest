@@ -191,8 +191,9 @@ workflow cases:
 
 > **Wired up:** `.github/workflows/evals.yml` is the live version of this, with per-PR change
 > detection (`scripts/ci-detect.mjs` — a changed skill/agent without evals is logged as `SKIP`,
-> not failed) and model knobs `EVAL_MODEL` / `EVAL_JUDGE_MODEL` / `EVAL_WORKFLOW_MODEL` as repo
-> Actions variables or manual-run inputs. The snippet below is the minimal shape.
+> not failed) and model knobs per tier — skills `EVAL_SKILL_MODEL` / `EVAL_SKILL_JUDGE_MODEL`,
+> agents `EVAL_MODEL` / `EVAL_JUDGE_MODEL`, workflow `EVAL_WORKFLOW_MODEL` — as repo Actions
+> variables or manual-run inputs. The snippet below is the minimal shape.
 
 The engine is CI-ready: bring the proxy up as a step, wait for it, run the tier, tear it down. Put
 the OpenRouter key in the repo's **Actions secrets** as `OPENROUTER_API_KEY` (Settings → Secrets and

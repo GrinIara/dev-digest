@@ -4,14 +4,17 @@
 # Only the suites a PR touches run — evals/scripts/ci-detect.mjs maps changed files onto them
 # (a changed skill/agent without written evals is logged as "SKIP … (no evals)", not failed).
 #
-# Models — resolved as: manual-run input → repo Actions variable → default below.
-#   skills + agents : EVAL_MODEL          (default deepseek/deepseek-chat — cheapest model that
-#                     passes the content + read/route traces, see evals/README.md)
-#                     EVAL_JUDGE_MODEL    (default anthropic/claude-haiku-4.5 — a different family
-#                     from the task model, to soften self-preference; Gemini Flash misread
-#                     conditional practices)
-#   workflow tier   : EVAL_WORKFLOW_MODEL (default anthropic/claude-haiku-4.5 — Gemini Flash
-#                     skipped the documented reads, 2/6 vs Haiku's 4/6 on the workflow cases)
+# Models — resolved as: manual-run input → repo Actions variable → default below. Each judge is a
+# different family from its task model, to soften self-preference.
+#   skills   : EVAL_SKILL_MODEL       (default anthropic/claude-haiku-4.5 — DeepSeek mis-ranked
+#                                      dependency-checker priorities in about half the runs)
+#              EVAL_SKILL_JUDGE_MODEL (default google/gemini-2.5-flash)
+#   agents   : EVAL_MODEL             (default deepseek/deepseek-chat — cheapest model that passes
+#                                      the agent cases, see evals/README.md)
+#              EVAL_JUDGE_MODEL       (default anthropic/claude-haiku-4.5 — Gemini Flash misread
+#                                      conditional practices)
+#   workflow : EVAL_WORKFLOW_MODEL    (default anthropic/claude-haiku-4.5 — Gemini Flash skipped
+#                                      the documented reads, 2/6 vs Haiku's 4/6)
 # Change them for every PR in Settings → Secrets and variables → Actions → Variables, or for one
 # run via Actions → evals → Run workflow. Requires the OPENROUTER_API_KEY Actions secret.
 name: evals
@@ -31,11 +34,17 @@ on:
         type: choice
         options: [all, skills, agents, workflow]
         default: all
+      skill_model:
+        description: 'EVAL_SKILL_MODEL for skills (OpenRouter slug; empty = repo variable / default)'
+        required: false
+      skill_judge_model:
+        description: 'EVAL_SKILL_JUDGE_MODEL (empty = repo variable / default)'
+        required: false
       model:
-        description: 'EVAL_MODEL for skills + agents (OpenRouter slug; empty = repo variable / default)'
+        description: 'EVAL_MODEL for agents (OpenRouter slug; empty = repo variable / default)'
         required: false
       judge_model:
-        description: 'EVAL_JUDGE_MODEL (OpenRouter slug; empty = repo variable / default)'
+        description: 'EVAL_JUDGE_MODEL for agents (empty = repo variable / default)'
         required: false
       workflow_model:
         description: 'EVAL_WORKFLOW_MODEL for the workflow tier (empty = repo variable / default)'
@@ -58,7 +67,8 @@ jobs:
     name: detect changed suites
     runs-on: ubuntu-latest
     outputs:
-      content_paths: ${{ steps.detect.outputs.content_paths }}
+      skill_paths: ${{ steps.detect.outputs.skill_paths }}
+      agent_paths: ${{ steps.detect.outputs.agent_paths }}
       run_workflow: ${{ steps.detect.outputs.run_workflow }}
     steps:
       - uses: actions/checkout@v4
@@ -101,10 +111,56 @@ jobs:
       - run: pnpm eval:quality
       - run: pnpm exec vitest run src/
 
-  content-evals:
-    name: skill + agent evals (${{ needs.detect.outputs.content_paths || 'none' }})
+  skill-evals:
+    name: skill evals
     needs: [detect, static]
-    if: needs.detect.outputs.content_paths != ''
+    if: needs.detect.outputs.skill_paths != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      EVAL_MODEL: ${{ inputs.skill_model || vars.EVAL_SKILL_MODEL || 'anthropic/claude-haiku-4.5' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.skill_judge_model || vars.EVAL_SKILL_JUDGE_MODEL || 'google/gemini-2.5-flash' }}
+      EVAL_PATHS: ${{ needs.detect.outputs.skill_paths }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+
+      # Skill cases call OpenRouter directly; the proxy just keeps one base URL for every tier.
+      - run: docker compose -f proxy/docker-compose.yml up -d
+      - run: pnpm proxy:wait
+
+      - name: run evals
+        run: |
+          echo "model=$EVAL_MODEL judge=$EVAL_JUDGE_MODEL paths=$EVAL_PATHS"
+          # Sequential + one retry: OpenRouter throttles parallel sessions (evals/README.md).
+          pnpm exec vitest run --no-file-parallelism --retry 1 $EVAL_PATHS
+
+      - if: failure()
+        run: docker compose -f proxy/docker-compose.yml logs --tail 100
+      - if: always()
+        run: docker compose -f proxy/docker-compose.yml down
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-skills
+          path: evals/results/
+          if-no-files-found: ignore
+
+  agent-evals:
+    name: agent evals
+    needs: [detect, static]
+    if: needs.detect.outputs.agent_paths != ''
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -113,7 +169,7 @@ jobs:
     env:
       EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-chat' }}
       EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || 'anthropic/claude-haiku-4.5' }}
-      EVAL_PATHS: ${{ needs.detect.outputs.content_paths }}
+      EVAL_PATHS: ${{ needs.detect.outputs.agent_paths }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -133,7 +189,7 @@ jobs:
       - name: run evals
         run: |
           echo "model=$EVAL_MODEL judge=$EVAL_JUDGE_MODEL paths=$EVAL_PATHS"
-          # Sequential + one retry: OpenRouter throttles parallel tool sessions (evals/README.md).
+          # Sequential + one retry: OpenRouter throttles parallel sessions (evals/README.md).
           pnpm exec vitest run --no-file-parallelism --retry 1 $EVAL_PATHS
 
       - if: failure()
@@ -143,7 +199,7 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eval-results-content
+          name: eval-results-agents
           path: evals/results/
           if-no-files-found: ignore
 
