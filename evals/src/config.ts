@@ -9,6 +9,9 @@
 export const EVAL_MODEL = process.env.EVAL_MODEL ?? "claude-haiku-4-5";
 export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-5";
 export const MAX_TURNS = Number(process.env.EVAL_MAX_TURNS ?? "8");
+// Per-request timeout of the direct OpenRouter call (content tier + judge). Slow models writing a
+// long report (DeepSeek on dependency-checker) exceed 90s.
+export const REQUEST_TIMEOUT_MS = Number(process.env.EVAL_REQUEST_TIMEOUT_MS ?? "180000");
 
 // --- Configuration tag ------------------------------------------------------
 // "candidate" = artifact injected (normal). "baseline" = no artifact (benchmark lift baseline).

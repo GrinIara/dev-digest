@@ -6,8 +6,8 @@ import type { WorkflowCase } from "../src/index.js";
  * documented. Organized by scenario, not by a single artifact, because these behaviors are
  * cross-cutting.
  *
- * Budget: 6 Claude sessions total (was ~14 as one-scenario-per-session).
- *   - 4 × merged trace → 1 session each                     = 4
+ * Budget: 7 Claude sessions total (was ~14 as one-scenario-per-session).
+ *   - 5 × trace → 1 session each                            = 5
  *   - 1 × activation pair (positive + near-miss negative)   = 2
  *
  * Merging rules (why some things are NOT merged):
@@ -65,16 +65,28 @@ export const cases: WorkflowCase[] = [
   // --- trace (1 session): root CLAUDE.md Map/Docs + e2e/ and mcp-server/ routing ---------------
   {
     kind: "trace",
-    name: "root: CLAUDE.md Docs/Map route to TESTING.md, agent-prompts, mcp README, e2e flows spec",
+    name: "root: CLAUDE.md Docs/Map route to TESTING.md, agent-prompts, mcp README",
     prompt:
       "Кілька питань про репо. На кожне відповідай коротко, але СПЕРШУ прочитай саме ту документацію, " +
       "на яку для цього вказують настанови репо (CLAUDE.md / AGENTS.md пакетів):\n" +
       "1) Як влаштовані тести та CI — коли запускається який набір?\n" +
       "2) Де лежать еталонні system prompt'и рев'юерів?\n" +
-      "3) Як підключити MCP-сервер DevDigest?\n" +
-      "4) Хочу додати новий e2e flow — що треба знати?",
-    expectFilesRead: ["TESTING.md", "docs/agent-prompts", "mcp-server/README.md", "e2e/specs/flows.md"],
+      "3) Як підключити MCP-сервер DevDigest?",
+    expectFilesRead: ["TESTING.md", "docs/agent-prompts", "mcp-server/README.md"],
     maxTurns: 12,
+  },
+
+  // --- trace (1 session): e2e/ nested CLAUDE.md → specs/flows.md --------------------------------
+  // Split out of the root session: as the 4th of 4 questions, cheap models stopped at e2e/AGENTS.md
+  // one hop short of flows.md. Alone it still needs two hops (root Map → e2e/AGENTS.md Read When).
+  {
+    kind: "trace",
+    name: "e2e: nested CLAUDE.md Read When routes a new-flow question to specs/flows.md",
+    prompt:
+      "Хочу додати новий e2e flow — що треба знати? Відповідай коротко, але спершу прочитай ту " +
+      "документацію, на яку для цього вказують настанови репо.",
+    expectFilesRead: ["e2e/specs/flows.md"],
+    maxTurns: 8,
   },
 
   // --- trace + text (1 session): root CLAUDE.md Gotchas/Conventions answered from context -------

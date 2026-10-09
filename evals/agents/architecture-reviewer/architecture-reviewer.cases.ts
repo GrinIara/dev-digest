@@ -65,7 +65,7 @@ export const cases: AgentCase[] = [
     kind: "quality",
     prompt: CHECKOUT_PROMPT,
     practices: [
-      "if it reports the missing client/ mirror of contracts/checkout.ts (XP2), it reports it as a separate finding; it does not merge the FastifyReply dependency-direction finding into it or replace that finding with it",
+      "the FastifyReply dependency-direction finding is not merged into or replaced by a missing-client/-mirror (XP2) finding. PASS if XP2 is not mentioned at all, or if it is reported as its own separate finding; FAIL only if the output folds the FastifyReply finding into XP2 or reports XP2 instead of it",
       "does not treat a module constructing its own `repository.ts` facade as a violation in general; the DI finding is specifically about a concrete class from `src/adapters/`",
       "does not raise naming, style, test-coverage or security comments as architecture findings (anything like that is only under the Out of scope section, not counted in the verdict)",
     ],

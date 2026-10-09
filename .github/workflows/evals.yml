@@ -7,10 +7,11 @@
 # Models — resolved as: manual-run input → repo Actions variable → default below.
 #   skills + agents : EVAL_MODEL          (default deepseek/deepseek-chat — cheapest model that
 #                     passes the content + read/route traces, see evals/README.md)
-#                     EVAL_JUDGE_MODEL    (default google/gemini-2.5-flash — a different family
-#                     from the task model, to soften self-preference)
-#   workflow tier   : EVAL_WORKFLOW_MODEL (default google/gemini-2.5-flash — the only verified
-#                     cheap model that actually dispatches subagents)
+#                     EVAL_JUDGE_MODEL    (default anthropic/claude-haiku-4.5 — a different family
+#                     from the task model, to soften self-preference; Gemini Flash misread
+#                     conditional practices)
+#   workflow tier   : EVAL_WORKFLOW_MODEL (default anthropic/claude-haiku-4.5 — Gemini Flash
+#                     skipped the documented reads, 2/6 vs Haiku's 4/6 on the workflow cases)
 # Change them for every PR in Settings → Secrets and variables → Actions → Variables, or for one
 # run via Actions → evals → Run workflow. Requires the OPENROUTER_API_KEY Actions secret.
 name: evals
@@ -105,13 +106,13 @@ jobs:
     needs: [detect, static]
     if: needs.detect.outputs.content_paths != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: evals
     env:
       EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-chat' }}
-      EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || 'google/gemini-2.5-flash' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || 'anthropic/claude-haiku-4.5' }}
       EVAL_PATHS: ${{ needs.detect.outputs.content_paths }}
     steps:
       - uses: actions/checkout@v4
@@ -156,8 +157,8 @@ jobs:
       run:
         working-directory: evals
     env:
-      EVAL_MODEL: ${{ inputs.workflow_model || vars.EVAL_WORKFLOW_MODEL || 'google/gemini-2.5-flash' }}
-      EVAL_JUDGE_MODEL: ${{ inputs.workflow_model || vars.EVAL_WORKFLOW_MODEL || 'google/gemini-2.5-flash' }}
+      EVAL_MODEL: ${{ inputs.workflow_model || vars.EVAL_WORKFLOW_MODEL || 'anthropic/claude-haiku-4.5' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.workflow_model || vars.EVAL_WORKFLOW_MODEL || 'anthropic/claude-haiku-4.5' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

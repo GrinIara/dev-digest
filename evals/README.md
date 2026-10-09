@@ -165,7 +165,8 @@ workflow cases:
 
 | Model | Content + routing/read traces | Subagent **dispatch** (`Agent`→ `architecture-reviewer`) |
 |-------|------------------------------|-----------------------------------------------------------|
-| `google/gemini-2.5-flash` | ✅ | ✅ **recommended** |
+| `anthropic/claude-haiku-4.5` | ✅ | ✅ **CI default** — 4/6 workflow cases vs Gemini Flash's 2/6 (Gemini skipped documented reads) |
+| `google/gemini-2.5-flash` | ✅ | ✅ |
 | `deepseek/deepseek-chat` | ✅ | ❌ does the work inline instead of dispatching |
 | `openai/gpt-4.1-mini` | ✅ | ❌ |
 

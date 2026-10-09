@@ -32,6 +32,8 @@ export interface QualityCase {
   /** Judge score gate (default 0.6). */
   threshold?: number;
   maxTurns?: number;
+  /** Per-test timeout in ms (default: vitest testTimeout). For cases with very long outputs. */
+  timeoutMs?: number;
 }
 export type SkillCase = QualityCase;
 export type AgentCase = QualityCase;
@@ -127,7 +129,7 @@ function runQualityCases(artifact: string, cases: QualityCase[], task: Task): vo
       if (verdict) {
         expect(verdict.score, JSON.stringify(verdict.results)).toBeGreaterThanOrEqual(threshold);
       }
-    });
+    }, c.timeoutMs);
   }
 }
 

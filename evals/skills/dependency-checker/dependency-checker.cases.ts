@@ -225,6 +225,8 @@ export const cases: SkillCase[] = [
     ],
     threshold: 0.6,
     maxTurns: 10,
+    // Long prioritised report: a slow model needs >90s per request, past the 240s default.
+    timeoutMs: 600_000,
   },
   {
     name: "verifies heuristics and drift instead of trusting raw flags; reports only, changes nothing",
