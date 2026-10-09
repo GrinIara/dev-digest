@@ -181,12 +181,17 @@ workflow cases:
    model invokes the Skill tool, so it passes.)
 
 > **Isolation note.** `workflowTask` runs with `settingSources:["project"]` + `bypassPermissions`
-> against the live repo. A model that decides to `Write` can touch real files (e.g. your local
-> memory dir) even though `WORKFLOW_ALLOWED_TOOLS` is a read-only list. In CI this is harmless (the
-> checkout is disposable); locally, prefer the Anthropic path or a throwaway clone for the workflow
-> tier.
+> against the live repo. Sessions are read-only by construction (see [Safety](#safety)): the model
+> and every subagent it dispatches see only the allow-listed tools. Before that isolation existed,
+> an activation eval wrote its *invented* fixture finding into the real `server/Insights.md` —
+> which the Session protocol then feeds to every later session as fact. Keep it that way.
 
 ### Wiring it into GitHub Actions (per-PR)
+
+> **Wired up:** `.github/workflows/evals.yml` is the live version of this, with per-PR change
+> detection (`scripts/ci-detect.mjs` — a changed skill/agent without evals is logged as `SKIP`,
+> not failed) and model knobs `EVAL_MODEL` / `EVAL_JUDGE_MODEL` / `EVAL_WORKFLOW_MODEL` as repo
+> Actions variables or manual-run inputs. The snippet below is the minimal shape.
 
 The engine is CI-ready: bring the proxy up as a step, wait for it, run the tier, tear it down. Put
 the OpenRouter key in the repo's **Actions secrets** as `OPENROUTER_API_KEY` (Settings → Secrets and
@@ -398,8 +403,9 @@ How each `kind` asserts:
 | `kind` | Runs | Passes when |
 |--------|------|-------------|
 | `dispatch` | `workflowTask` | `result.subagents` contains `expectSubagent` |
-| `activation` | `workflowTask` | `activated(result, skill) === shouldActivate` (positive **and** near-miss negative) |
+| `activation` | `workflowTask` | `activated(result, skill) === shouldActivate` (positive **and** near-miss negative). With `writePractices`, also: the session attempted a Write/Edit, and a judge scores its text against a dossier (user prompt + files read + attempted write + "BLOCKED" + final answer) at `threshold` |
 | `contrast` | treatment (real repo) **and** control (empty tmpdir, `settingSources:[]`) | `expectFileRead` read in treatment, NOT in control |
+| `trace` | one `workflowTask` (merged scenario) | every given facet holds: `expectFilesRead`, `expectNotRead`, `expectSubagents`, `expectSkills`, `expectText`, `forbidText` — soft-asserted, so all misses are reported at once. Stops early once read/dispatch facets are in, unless a text facet is set |
 
 Workflow records carry an empty `practices[]` (no judge) but a full trace; `contrast` writes two
 records — `<label>:treatment` and `<label>:control`.
@@ -421,8 +427,8 @@ pnpm vitest run src/records/stats.test.ts       # the only non-model unit test (
 ### `eval:repeat` — stability of one thing
 
 ```bash
-pnpm eval:repeat <vitest pattern> [-n times=5] [-t testNamePattern] [--label name]
-pnpm eval:repeat skills/onion-architecture -n 5 --label baseline
+pnpm eval:repeat <vitest pattern> [-n times=2, max 2] [-t testNamePattern] [--label name]
+pnpm eval:repeat skills/onion-architecture -n 2 --label baseline
 ```
 Runs the pattern N times, then prints per-test pass rate, a per-**practice** table
 (`passed/total (pct)`), and metric stats (`turns`, `duration_ms`, `tokens_out` as mean ± stddev;
@@ -435,9 +441,9 @@ The primary "before vs after a change" workflow. **Capture the baseline label BE
 there is no way to reconstruct it afterwards short of reverting.
 
 ```bash
-pnpm eval:repeat skills/onion-architecture -n 5 --label baseline   # BEFORE the edit
+pnpm eval:repeat skills/onion-architecture -n 2 --label baseline   # BEFORE the edit
 #   ...edit SKILL.md...
-pnpm eval:repeat skills/onion-architecture -n 5 --label candidate  # AFTER the edit
+pnpm eval:repeat skills/onion-architecture -n 2 --label candidate  # AFTER the edit
 pnpm eval:delta baseline candidate
 ```
 Shows the delta at three levels: per-test pass rate, per-**practice** (which practice
@@ -447,9 +453,9 @@ improved, red = regressed, dim = unchanged. A practice on one side only renders 
 ### `eval:benchmark` — measured lift (with vs without the artifact)
 
 ```bash
-pnpm eval:benchmark <vitest pattern> [-n runs=5]
-pnpm eval:benchmark skills/engineering-insights -n 5    # a skill
-pnpm eval:benchmark agents/architecture-reviewer -n 5   # an agent
+pnpm eval:benchmark <vitest pattern> [-n runs=2, max 2 per config]
+pnpm eval:benchmark skills/engineering-insights -n 2    # a skill
+pnpm eval:benchmark agents/architecture-reviewer -n 2   # an agent
 ```
 
 **candidate vs baseline** — the whole idea. The benchmark runs the *same test case* in two
@@ -564,16 +570,29 @@ tokens > 125% of baseline), `missing_data` (a config has zero records for a test
 | `CLAUDE.md` / activation / dispatch | `pnpm eval:workflow` |
 | Any artifact's structure | `pnpm eval:quality` |
 | A `SKILL.md` edit you want to **measure** | repeat/delta loop: `--label baseline` before, `--label candidate` after, then `eval:delta` |
-| New skill/agent — is it **worth its tokens**? | `pnpm eval:benchmark skills/<skill> -n 5` |
+| New skill/agent — is it **worth its tokens**? | `pnpm eval:benchmark skills/<skill> -n 2` |
 | Adding evals for one of **your** skills/agents | `pnpm eval:scaffold <name>` (or `--agent <name>`) |
 | Model / Claude Code version | `pnpm eval` (whole suite) |
 | Stats math changed | `pnpm vitest run src/records/stats.test.ts` |
 
 ## Safety
 
-Sessions run with `permissionMode: "bypassPermissions"`, so `workflowTask` keeps a **read-only
-allow-list** (`Read, Grep, Glob, Task, Agent, Skill` — no `Bash`/`Write`/`Edit`). Don't copy the
-bypass pattern into a context that grants write tools.
+Sessions run with `permissionMode: "bypassPermissions"` against the live repo, so `runClaude`
+isolates them in three layers:
+
+1. **`tools`** — the only built-ins the model sees (`WORKFLOW_ALLOWED_TOOLS` for the workflow tier).
+   This also binds dispatched **subagents**: a subagent's `Edit`/`Bash` fails with "No such tool
+   available". (`allowedTools` alone only pre-approves — it leaves `Task`, `Workflow`,
+   `RemoteTrigger`, `CronCreate`, … callable.)
+2. **`disallowedTools`** — `Write, Edit, NotebookEdit, Bash` and `mcp__*` (the project `.mcp.json`
+   loads `devdigest`, whose `run_agent_on_pr` starts a paid review run).
+3. **`PreToolUse` hook** — denies any call outside the allow-list, main thread or subagent; a backstop
+   for anything layers 1–2 miss.
+
+Every refused call lands in `result.toolsBlocked` / the record's `trace.blocked` as `Tool` or
+`Tool@subagent`. Non-empty means the session *tried* to act — and was stopped. Never trust the
+model's own claim that it wrote something: a blocked subagent still reported "successfully added".
+Don't copy the bypass pattern into a context that grants write tools.
 
 ## Deferred (recorded so it isn't rediscovered)
 

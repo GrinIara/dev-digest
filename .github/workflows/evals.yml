@@ -1,0 +1,190 @@
+# evals suite — the Claude Code harness evals (@devdigest/evals): skills, subagents and the
+# workflow tier (CLAUDE.md / AGENTS.md + on-disk config), on OpenRouter models.
+#
+# Only the suites a PR touches run — evals/scripts/ci-detect.mjs maps changed files onto them
+# (a changed skill/agent without written evals is logged as "SKIP … (no evals)", not failed).
+#
+# Models — resolved as: manual-run input → repo Actions variable → default below.
+#   skills + agents : EVAL_MODEL          (default deepseek/deepseek-chat — cheapest model that
+#                     passes the content + read/route traces, see evals/README.md)
+#                     EVAL_JUDGE_MODEL    (default google/gemini-2.5-flash — a different family
+#                     from the task model, to soften self-preference)
+#   workflow tier   : EVAL_WORKFLOW_MODEL (default google/gemini-2.5-flash — the only verified
+#                     cheap model that actually dispatches subagents)
+# Change them for every PR in Settings → Secrets and variables → Actions → Variables, or for one
+# run via Actions → evals → Run workflow. Requires the OPENROUTER_API_KEY Actions secret.
+name: evals
+
+on:
+  pull_request:
+    paths:
+      - '.claude/**'
+      - 'CLAUDE.md'
+      - '**/AGENTS.md'
+      - 'evals/**'
+      - '.github/workflows/evals.yml'
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'Suites to run: all | skills | agents | workflow'
+        type: choice
+        options: [all, skills, agents, workflow]
+        default: all
+      model:
+        description: 'EVAL_MODEL for skills + agents (OpenRouter slug; empty = repo variable / default)'
+        required: false
+      judge_model:
+        description: 'EVAL_JUDGE_MODEL (OpenRouter slug; empty = repo variable / default)'
+        required: false
+      workflow_model:
+        description: 'EVAL_WORKFLOW_MODEL for the workflow tier (empty = repo variable / default)'
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EVAL_BACKEND: openrouter
+  OPENROUTER_BASE_URL: http://localhost:4000 # the LiteLLM proxy from evals/proxy/
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+jobs:
+  detect:
+    name: detect changed suites
+    runs-on: ubuntu-latest
+    outputs:
+      content_paths: ${{ steps.detect.outputs.content_paths }}
+      run_workflow: ${{ steps.detect.outputs.run_workflow }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVAL_TARGETS: ${{ inputs.targets || 'auto' }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            CHANGED_FILES="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+          else
+            CHANGED_FILES=""
+          fi
+          export CHANGED_FILES
+          node evals/scripts/ci-detect.mjs
+
+  # No model, no tokens: typecheck, the static SKILL.md gate and the statistics unit tests.
+  static:
+    name: typecheck + static gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm eval:quality
+      - run: pnpm exec vitest run src/
+
+  content-evals:
+    name: skill + agent evals (${{ needs.detect.outputs.content_paths || 'none' }})
+    needs: [detect, static]
+    if: needs.detect.outputs.content_paths != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-chat' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || 'google/gemini-2.5-flash' }}
+      EVAL_PATHS: ${{ needs.detect.outputs.content_paths }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+
+      # Agent cases run inside the Claude Agent SDK, which needs the Anthropic↔OpenAI proxy.
+      - run: docker compose -f proxy/docker-compose.yml up -d
+      - run: pnpm proxy:wait
+
+      - name: run evals
+        run: |
+          echo "model=$EVAL_MODEL judge=$EVAL_JUDGE_MODEL paths=$EVAL_PATHS"
+          # Sequential + one retry: OpenRouter throttles parallel tool sessions (evals/README.md).
+          pnpm exec vitest run --no-file-parallelism --retry 1 $EVAL_PATHS
+
+      - if: failure()
+        run: docker compose -f proxy/docker-compose.yml logs --tail 100
+      - if: always()
+        run: docker compose -f proxy/docker-compose.yml down
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-content
+          path: evals/results/
+          if-no-files-found: ignore
+
+  workflow-evals:
+    name: workflow evals
+    needs: [detect, static]
+    if: needs.detect.outputs.run_workflow == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      EVAL_MODEL: ${{ inputs.workflow_model || vars.EVAL_WORKFLOW_MODEL || 'google/gemini-2.5-flash' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.workflow_model || vars.EVAL_WORKFLOW_MODEL || 'google/gemini-2.5-flash' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+
+      - run: docker compose -f proxy/docker-compose.yml up -d
+      - run: pnpm proxy:wait
+
+      - name: run evals
+        run: |
+          echo "model=$EVAL_MODEL"
+          pnpm exec vitest run --no-file-parallelism --retry 1 workflow/
+
+      - if: failure()
+        run: docker compose -f proxy/docker-compose.yml logs --tail 100
+      - if: always()
+        run: docker compose -f proxy/docker-compose.yml down
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-workflow
+          path: evals/results/
+          if-no-files-found: ignore
