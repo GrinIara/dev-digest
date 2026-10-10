@@ -9,14 +9,18 @@
 #   skills   : EVAL_SKILL_MODEL       (default anthropic/claude-haiku-4.5 — DeepSeek mis-ranked
 #                                      dependency-checker priorities in about half the runs)
 #              EVAL_SKILL_JUDGE_MODEL (default google/gemini-2.5-flash)
-#   agents   : EVAL_MODEL             (default deepseek/deepseek-chat — cheapest model that passes
-#                                      the agent cases, see evals/README.md)
-#              EVAL_JUDGE_MODEL       (default anthropic/claude-haiku-4.5 — Gemini Flash misread
-#                                      conditional practices)
+#   agents   : EVAL_MODEL             (default anthropic/claude-haiku-4.5 — DeepSeek missed the
+#                                      reviewer-core grounding-gate finding in ~1 of 3 runs)
+#              EVAL_JUDGE_MODEL       (default google/gemini-2.5-flash)
 #   workflow : EVAL_WORKFLOW_MODEL    (default anthropic/claude-haiku-4.5 — Gemini Flash skipped
 #                                      the documented reads, 2/6 vs Haiku's 4/6)
 # Change them for every PR in Settings → Secrets and variables → Actions → Variables, or for one
 # run via Actions → evals → Run workflow. Requires the OPENROUTER_API_KEY Actions secret.
+#
+# Secrets and forks: the workflow runs on `pull_request` (never `pull_request_target`) and GitHub
+# does not pass Actions secrets to fork PRs, so the three model-backed jobs are skipped for forks
+# (explicit `if:` below) and only the free `detect` + `static` jobs run there. The key is scoped
+# to those three jobs only, so the jobs that execute PR code without needing it never see it.
 name: evals
 
 on:
@@ -60,7 +64,7 @@ concurrency:
 env:
   EVAL_BACKEND: openrouter
   OPENROUTER_BASE_URL: http://localhost:4000 # the LiteLLM proxy from evals/proxy/
-  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  # OPENROUTER_API_KEY is set per job (skill/agent/workflow-evals), not here — see the header.
 
 jobs:
   detect:
@@ -114,13 +118,14 @@ jobs:
   skill-evals:
     name: skill evals
     needs: [detect, static]
-    if: needs.detect.outputs.skill_paths != ''
+    if: needs.detect.outputs.skill_paths != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
       run:
         working-directory: evals
     env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       EVAL_MODEL: ${{ inputs.skill_model || vars.EVAL_SKILL_MODEL || 'anthropic/claude-haiku-4.5' }}
       EVAL_JUDGE_MODEL: ${{ inputs.skill_judge_model || vars.EVAL_SKILL_JUDGE_MODEL || 'google/gemini-2.5-flash' }}
       EVAL_PATHS: ${{ needs.detect.outputs.skill_paths }}
@@ -160,15 +165,16 @@ jobs:
   agent-evals:
     name: agent evals
     needs: [detect, static]
-    if: needs.detect.outputs.agent_paths != ''
+    if: needs.detect.outputs.agent_paths != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
       run:
         working-directory: evals
     env:
-      EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-chat' }}
-      EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || 'anthropic/claude-haiku-4.5' }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'anthropic/claude-haiku-4.5' }}
+      EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || 'google/gemini-2.5-flash' }}
       EVAL_PATHS: ${{ needs.detect.outputs.agent_paths }}
     steps:
       - uses: actions/checkout@v4
@@ -206,13 +212,14 @@ jobs:
   workflow-evals:
     name: workflow evals
     needs: [detect, static]
-    if: needs.detect.outputs.run_workflow == 'true'
+    if: needs.detect.outputs.run_workflow == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
         working-directory: evals
     env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       EVAL_MODEL: ${{ inputs.workflow_model || vars.EVAL_WORKFLOW_MODEL || 'anthropic/claude-haiku-4.5' }}
       EVAL_JUDGE_MODEL: ${{ inputs.workflow_model || vars.EVAL_WORKFLOW_MODEL || 'anthropic/claude-haiku-4.5' }}
     steps:

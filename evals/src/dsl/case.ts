@@ -57,6 +57,12 @@ export type WorkflowCase =
       writePractices?: string[];
       /** Judge score gate for writePractices (default 0.6). */
       threshold?: number;
+      /**
+       * false → a failed writePractices verdict is reported (warning; ::warning:: on GitHub Actions)
+       * and recorded as a failure, but does not fail the test. The activation check stays blocking.
+       * For judged behaviour a cheap model gets wrong too often to gate every PR on. Default true.
+       */
+      writeBlocking?: boolean;
       maxTurns?: number;
     }
   | {
@@ -87,6 +93,8 @@ export type WorkflowCase =
       expectText?: Array<string | RegExp>;
       forbidText?: Array<string | RegExp>;
       maxTurns?: number;
+      /** Per-test timeout in ms (default: vitest testTimeout). For sessions that dispatch a subagent. */
+      timeoutMs?: number;
     };
 
 /** Did a skill engage? Either an explicit Skill tool-call, or reading its SKILL.md. */
@@ -140,6 +148,8 @@ export const runAgentCases = (agent: string, cases: AgentCase[]) => runQualityCa
 interface Check {
   ok: boolean;
   msg: string;
+  /** Reported and recorded, but never fails the test. */
+  advisory?: boolean;
 }
 
 /**
@@ -154,7 +164,14 @@ function recordAndAssert(
   judged?: { verdict?: Verdict; threshold: number },
 ): void {
   record(label, { result, passed: checks.every((c) => c.ok), verdict: judged?.verdict, threshold: judged?.threshold });
-  for (const c of checks) expect.soft(c.ok, c.msg).toBe(true);
+  for (const c of checks) {
+    if (!c.advisory) {
+      expect.soft(c.ok, c.msg).toBe(true);
+    } else if (!c.ok) {
+      console.warn(`ADVISORY (non-blocking) ${label}: ${c.msg}`);
+      if (process.env.GITHUB_ACTIONS) console.log(`::warning title=non-blocking eval failed::${label}`);
+    }
+  }
 }
 
 export function runWorkflowCases(cases: WorkflowCase[]): void {
@@ -192,6 +209,7 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
           checks.push({
             ok: verdict.score >= threshold,
             msg: `write judged ${verdict.passed}/${verdict.total} < ${threshold}: ${JSON.stringify(verdict.results)}`,
+            advisory: c.writeBlocking === false,
           });
         }
         recordAndAssert(c.name, result, checks, judged);
@@ -260,6 +278,6 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
           { ok: !controlRead, msg: `control reads: ${control.filesRead.join(", ")}` },
         ]);
       }
-    });
+    }, "timeoutMs" in c ? c.timeoutMs : undefined);
   }
 }

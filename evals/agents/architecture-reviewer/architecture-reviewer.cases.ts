@@ -33,6 +33,8 @@ const REVIEWER_CORE_PROMPT = reviewPrompt(fx("reviewer-core-gate.diff"));
 // A diff that violates no documented rule. Surfaces the COST of relaxing the citation rule: freed
 // from "every finding is traceable to a rule source", the lite variant may invent a finding.
 const BENIGN_PROMPT = reviewPrompt(fx("benign-refactor.diff"));
+// Tool-tier agent sessions on Haiku took up to ~170s and once passed the 240s default.
+const AGENT_TIMEOUT_MS = 480_000;
 
 // Shared by architecture-reviewer (strict) and architecture-reviewer-lite (relaxed citation): same
 // prompts, fixtures, practices, thresholds and maxTurns. Only the injected agent body differs, so
@@ -59,6 +61,7 @@ export const cases: AgentCase[] = [
     ],
     threshold: 1.0,
     maxTurns: 25,
+    timeoutMs: AGENT_TIMEOUT_MS,
   },
   {
     name: "checkout diff: stays in scope and does not misflag the repository convention",
@@ -71,6 +74,7 @@ export const cases: AgentCase[] = [
     ],
     threshold: 1.0,
     maxTurns: 25,
+    timeoutMs: AGENT_TIMEOUT_MS,
   },
   {
     name: "reviewer-core diff: finds the I/O import and the skipped grounding gate, cites the rule",
@@ -87,6 +91,7 @@ export const cases: AgentCase[] = [
     ],
     threshold: 1.0,
     maxTurns: 25,
+    timeoutMs: AGENT_TIMEOUT_MS,
   },
   {
     name: "benign diff: reports no architecture violation",
@@ -94,10 +99,11 @@ export const cases: AgentCase[] = [
     prompt: BENIGN_PROMPT,
     practices: [
       "reports no findings in the Findings section, or only `nit`-level items — no critical/major/minor finding is invented for a local-variable rename",
-      "does not present a generic best-practice opinion as a violated rule",
+      "no finding presents a generic best-practice opinion as a violated rule. PASS if the Findings section is empty or says there are no findings; FAIL only if a finding cites a rule the diff does not actually break, and quote it",
       "the overall verdict is `pass`",
     ],
     threshold: 1.0,
     maxTurns: 25,
+    timeoutMs: AGENT_TIMEOUT_MS,
   },
 ];

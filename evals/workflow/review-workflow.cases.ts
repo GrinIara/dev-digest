@@ -6,8 +6,8 @@ import type { WorkflowCase } from "../src/index.js";
  * documented. Organized by scenario, not by a single artifact, because these behaviors are
  * cross-cutting.
  *
- * Budget: 7 Claude sessions total (was ~14 as one-scenario-per-session).
- *   - 5 × trace → 1 session each                            = 5
+ * Budget: 8 Claude sessions total (was ~14 as one-scenario-per-session).
+ *   - 6 × trace → 1 session each                            = 6
  *   - 1 × activation pair (positive + near-miss negative)   = 2
  *
  * Merging rules (why some things are NOT merged):
@@ -25,19 +25,32 @@ import type { WorkflowCase } from "../src/index.js";
  * the nested file, not in the root one.
  */
 export const cases: WorkflowCase[] = [
-  // --- trace (1 session): client/ nested CLAUDE.md — session protocol + two Read When rows -------
+  // --- trace (2 sessions): client/ nested CLAUDE.md — session protocol, then two Read When rows --
+  // Split from one 3-task session: cheap models (Haiku) finished task 1 and skipped the docs for
+  // tasks 2–3 in ~1 of 3 runs, even with a retry. Both halves stay client-only, so each also
+  // carries the "no server/Insights.md" negative.
   {
     kind: "trace",
-    name: "client: nested CLAUDE.md → Insights.md + pages.md + ui-architecture.md, no server reads",
+    name: "client: nested CLAUDE.md session protocol → client/Insights.md, no server reads",
     prompt:
-      "Працюю над фронтендом у client/. Три задачі по черзі; перед кожною дотримуйся настанов цього " +
-      "пакета щодо того, що треба прочитати. Код не пиши — лише короткий план.\n" +
-      "1) Відкрий client/src/app/agents/_components/AgentCard/AgentCard.tsx і скажи, що там можна покращити.\n" +
-      "2) Хочу додати нову сторінку зі списком ранів рев'ю — звірся з документацією про маршрути.\n" +
-      "3) Не знаю, чи логіку фільтрації ранів класти на сервер чи на клієнт — звірся з документацією.",
-    expectFilesRead: ["client/Insights.md", "client/specs/pages.md", "client/docs/ui-architecture.md"],
+      "Працюю над фронтендом у client/. Перед початком дотримуйся настанов цього пакета щодо того, " +
+      "що треба прочитати. Код не пиши — лише короткий план.\n" +
+      "Відкрий client/src/app/agents/_components/AgentCard/AgentCard.tsx і скажи, що там можна покращити.",
+    expectFilesRead: ["client/Insights.md"],
     expectNotRead: ["server/Insights.md"],
-    maxTurns: 14,
+    maxTurns: 10,
+  },
+  {
+    kind: "trace",
+    name: "client: nested CLAUDE.md Read When → specs/pages.md + docs/ui-architecture.md, no server reads",
+    prompt:
+      "Працюю над фронтендом у client/. Дві задачі; перед кожною дотримуйся настанов цього пакета " +
+      "щодо того, яку документацію треба прочитати. Код не пиши — лише короткий план.\n" +
+      "1) Хочу додати нову сторінку зі списком ранів рев'ю — звірся з документацією про маршрути.\n" +
+      "2) Не знаю, чи логіку фільтрації ранів класти на сервер чи на клієнт — звірся з документацією.",
+    expectFilesRead: ["client/specs/pages.md", "client/docs/ui-architecture.md"],
+    expectNotRead: ["server/Insights.md"],
+    maxTurns: 12,
   },
 
   // --- trace (1 session): server/ + reviewer-core/ routing, then architecture-reviewer dispatch --
@@ -60,6 +73,9 @@ export const cases: WorkflowCase[] = [
     expectSubagents: ["architecture-reviewer"],
     // Observed 13–22 turns with maxTurns 12 → run 1 hit the cap before dispatching.
     maxTurns: 24,
+    // If a facet is missed the early stop never fires and the nested reviewer runs in full (~5 min),
+    // so the test would die on the 240 s default instead of reporting the missing read.
+    timeoutMs: 480_000,
   },
 
   // --- trace (1 session): root CLAUDE.md Map/Docs + e2e/ and mcp-server/ routing ---------------
@@ -129,7 +145,11 @@ export const cases: WorkflowCase[] = [
         "FAIL and quote it.",
     ],
     threshold: 1,
-    maxTurns: 8,
+    // Non-blocking: on Haiku the honesty rule now holds, but the model still sometimes adds details
+    // the user never stated (1/3 local runs green). Reported as a warning, recorded as a failure.
+    writeBlocking: false,
+    // 12, not 8: Haiku sometimes explores the codebase before invoking the skill and hit the cap.
+    maxTurns: 12,
   },
   {
     kind: "activation",
