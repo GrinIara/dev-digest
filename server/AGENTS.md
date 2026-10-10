@@ -1,7 +1,7 @@
 # server — agent map
 
 ## Session protocol
-Before working in this module, read `Insights.md`. When a session surfaces a substantial, non-obvious finding, use the `engineering-insights` skill to append it (skip if nothing new).
+Your first action in this module — before opening any of its code, even for a read-only question or a quick explanation — is to read `Insights.md` in full. When a session surfaces a substantial, non-obvious finding, use the `engineering-insights` skill to append it (skip if nothing new).
 
 ## Stack
 Node 22 · TypeScript 5.7 · Fastify 5 · Drizzle ORM 0.38 (Postgres + pgvector) ·

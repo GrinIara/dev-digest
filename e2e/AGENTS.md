@@ -1,7 +1,7 @@
 # e2e — agent map
 
 ## Session protocol
-Before working in this module, read `Insights.md`. When a session surfaces a substantial, non-obvious finding, use the `engineering-insights` skill to append it (skip if nothing new).
+Your first action in this module — before opening any of its code, even for a read-only question or a quick explanation — is to read `Insights.md` in full. When a session surfaces a substantial, non-obvious finding, use the `engineering-insights` skill to append it (skip if nothing new).
 
 ## Stack
 TypeScript 5.7 · tsx runtime · Vercel **agent-browser** CLI (Rust + CDP). No

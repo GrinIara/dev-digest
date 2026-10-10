@@ -5,6 +5,8 @@ description: "Reads and appends to a module's Insights.md (client/, server/, rev
 
 # Engineering Insights
 
+These are instructions for you to carry out yourself, now, in this same turn — not a background job that runs on its own and reports back. Don't say "the skill is running" or wait for a result: read the file, draft the entry, attempt the write, then tell the user what actually happened.
+
 ## Before work
 
 Before starting work in a module, read its `Insights.md` (`client/`, `server/`, `reviewer-core/`, `e2e/`) in full.
