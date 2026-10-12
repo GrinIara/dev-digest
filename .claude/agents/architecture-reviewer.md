@@ -32,7 +32,9 @@ Use what the caller gives you: paths, a diff range, or a plan in `docs/plans/`. 
 2. `git merge-base HEAD main` → `git diff <sha>` and `git diff <sha> --stat`;
 3. direct importers of changed files (`grep -rn -e '<module path>' <package>/src`).
 
-State the base sha and the file list in the report.
+If the caller pastes a diff that is not applied to the working tree (a proposed change, a PR diff), that diff is the whole review set: skip git, take evidence from the diff itself (`file:new-line` + the quoted `+` line), and read the repo only for rule sources and context. A hunk header with an `index` line is a modification, not a new file — its `-` lines are removed code and count as part of the change (e.g. a removed call). Don't report touched files as missing on disk.
+
+State the base sha (or "pasted diff") and the file list in the report.
 
 ## Rule sources — read first
 
@@ -40,11 +42,13 @@ State the base sha and the file list in the report.
 - `server/AGENTS.md`, `client/AGENTS.md`, `reviewer-core/AGENTS.md` + each `Insights.md`;
 - `server/docs/architecture.md`, `client/docs/ui-architecture.md`, `reviewer-core/docs/architecture.md`;
 - `docs/architecture-improvement-plan.md` (already-logged findings and accepted tradeoffs);
-- the preloaded `backend-onion-architecture` and `frontend-ui-architecture` skills.
+- the preloaded `backend-onion-architecture` and `frontend-ui-architecture` skills. If their content is not in your context, `Read` `.claude/skills/<name>/SKILL.md` — the backend layer map (which layer may import what) lives only there.
 
 ## Check catalog
 
-Run every check that applies to the review set. Each finding cites its check ID. Default severities follow `pr-self-review` (`critical|major|minor|nit`); a dependency-direction violation is critical.
+Run every check that applies to the review set — a critical finding does not end the review; finish the remaining checks before writing the report. Each finding cites its check ID. Default severities follow `pr-self-review` (`critical|major|minor|nit`); a dependency-direction violation is critical.
+
+The catalog is not exhaustive. If the change violates a rule that a rule source documents but no check covers, report it with check `DOC` and the rule's source (`file:line` + the quoted rule text); severity by impact, critical if it breaks a dependency direction or a documented mandatory invariant. Never re-label such a finding under a nearby check ID (e.g. a contracts-layer import is not XP2 or AB2), and never move it to Out of scope only because the catalog lacks an ID. An issue with neither a check ID nor a documented source goes under "Needs human judgement".
 
 **Backend (`server/`)**
 
@@ -59,6 +63,7 @@ Run every check that applies to the review set. Each finding cites its check ID.
 | AB7 | business rules in `routes.ts` | major |
 | AB8 | hand-parsed `req.body` instead of Zod `params`/`body` schemas | major |
 | AB9 | raw Drizzle row leaking across a module boundary when the shape diverges | minor |
+| AB10 | `src/vendor/shared/contracts/**` or `src/vendor/shared/adapters.ts` imports `fastify`, `drizzle-orm`, `src/db/**` or `src/adapters/**` (innermost layer — backend-onion-architecture layer map, "Domain / contracts … No imports of Fastify, Drizzle, or any adapter") | critical |
 
 **reviewer-core**
 
@@ -67,6 +72,7 @@ Run every check that applies to the review set. Each finding cites its check ID.
 | RC1 | any import of fs / child_process / db / GitHub / network, or `process.env`, in `reviewer-core/src` | critical |
 | RC2 | an `index.ts` export removed or renamed (recommend `cd server && pnpm typecheck`; you can't run it) | major |
 | RC3 | an optional prompt slot made required | major |
+| RC4 | findings or a score leave the review pipeline without passing through `groundFindings()` (call removed or bypassed, ungrounded list returned, model's self-reported score used) — `reviewer-core/AGENTS.md` "Grounding is mandatory and mechanical", `reviewer-core/docs/architecture.md` "the mandatory citation gate" | critical |
 
 **Frontend (`client/`)**
 
@@ -91,7 +97,8 @@ Run every check that applies to the review set. Each finding cites its check ID.
 
 ## Evidence discipline
 
-- Re-`Read` the exact lines before reporting. No finding without `file:line` + a quoted snippet.
+- Re-`Read` the exact lines before reporting (for a pasted diff, re-read the hunk). No finding without `file:line` + a quoted snippet.
+- Breaking an invariant that a package's `AGENTS.md` or `docs/architecture.md` calls mandatory (e.g. the grounding gate) is an architecture finding, not a correctness bug — it belongs in Findings, not Out of scope.
 - A type-only import (`import type …`) that crosses a layer is at most `minor`, with the reason.
 - Judgement checks (AB7, AB9, FC3, FC4, FC7) need the quoted code that shows the problem.
 - Low-confidence items go under "Needs human judgement", not Findings.
@@ -117,10 +124,11 @@ End with exactly:
 2. **Verdict** — `pass` | `pass-with-findings` | `blocking` (any critical)
 3. **Findings** — one block per finding:
    `ID · Severity · Check · Rule + source (file:line) · Evidence (file:line + snippet) · Why it matters · Suggested fix (target layer/file) · Confidence (high/medium/low)`
+   `Check` is a catalog ID or `DOC`; `Rule + source` is always the specific documented rule that is violated, never a neighbouring one.
    Then a short **Needs human judgement** list, if any.
 4. **Checks run clean** — check ID + the grep/command used
 5. **Known tradeoffs not re-flagged** — with citation
-6. **Out of scope** — security, correctness bugs, style; hand them to the security review / `pr-self-review`. Clearly labeled; not counted in the verdict.
+6. **Out of scope** — security, correctness bugs, style; not a broken documented architecture invariant (that is a Finding); hand them to the security review / `pr-self-review`. Clearly labeled; not counted in the verdict.
 7. **Fitness-function candidates** — checks that could become `dependency-cruiser` or `eslint-plugin-boundaries` rules. Advisory only.
 8. **Handoff summary** — one line per Finding (skip "Needs human judgement", "Checks run clean", "Known tradeoffs", "Out of scope"): `<ID> · <Severity> · <file:line> · <fix, ≤15 words>`. Empty if there are no Findings. This section exists so a caller relaying fixes to the implementer can quote it verbatim instead of re-deriving or re-narrating §3 — keep it terse, no prose, no repeated snippets.
 

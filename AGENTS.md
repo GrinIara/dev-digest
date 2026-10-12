@@ -23,6 +23,7 @@ and web run on the host.
 - `specs/` — Spec-Driven Development specs (`SPEC-<YYYY-MM-DD>-<slug>.md`, in English) for features spanning several packages; single-package specs go in `<package>/specs/`. Written by the `spec-creator` agent; once approved, a spec is the input for `implementation-planner`.
 - `docs/agent-prompts/` — reference reviewer system prompts + model-choice notes
 - `TESTING.md` — cross-package testing/CI strategy (one suite per package, own workflow + path filter)
+- `evals/` — evals for the Claude Code harness itself (skills, subagents, `CLAUDE.md`/`AGENTS.md` routing) — see `evals/README.md`; which one to run after a change: **Evals** below
 - `docker-compose.yml` — the Postgres/pgvector service definition
 - `.claude/skills/` + `skills-lock.json` — installed Claude Code skills (managed by skill tooling, not hand-edited)
 
@@ -30,6 +31,26 @@ and web run on the host.
 - Cross-package sharing is via tsconfig path aliases (e.g. `@devdigest/reviewer-core` → `../reviewer-core/src`), never a published/npm dependency between these packages.
 - `main` is the **course starter state** — minimal and working end-to-end. Lesson/feature work happens in forks, not on `main` (see git history: `revert: restore main to the starter state, homework belongs in forks`).
 - Each package's test suite runs only when that package (or a package it depends on at type-check time) changes — see `TESTING.md` for the suite-to-workflow map.
+- When the user asks to record, remember or "зафіксувати" a finding/gotcha, invoke the `engineering-insights` skill first — never hand-edit a package's `Insights.md`. The skill enforces evidence-only, de-duplicated, append-only entries; every later session reads `Insights.md` as fact.
+
+## Evals — which one to run after a change
+Run from `evals/` (`cd evals && pnpm install` once). Model-backed suites cost real tokens, so run
+only the row that matches what you changed; `pnpm eval:quality` is free (no model).
+
+| You changed | Run |
+|---|---|
+| A skill (`.claude/skills/<name>/SKILL.md` or its `references/`) | `pnpm vitest run skills/<name>` |
+| A subagent (`.claude/agents/<name>.md`) | `pnpm vitest run agents/<name>` |
+| Root `CLAUDE.md`, any package `AGENTS.md`, or a skill/subagent `description` (activation and dispatch) | `pnpm eval:workflow` |
+| The structure or frontmatter of any skill/agent | `pnpm eval:quality` |
+| An edit you want to **measure** (better or worse?) | `pnpm eval:repeat <path> -n 5 --label baseline` **before** editing, `--label candidate` after, then `pnpm eval:delta baseline candidate` |
+| A new skill/agent — is it worth its tokens? | `pnpm eval:scaffold <name>` to create cases, then `pnpm eval:benchmark skills/<name>` (with vs without the artifact) |
+| The model, Claude Code version, or the `evals/` engine | `pnpm eval` (everything) |
+
+CI (`.github/workflows/evals.yml`) picks the suites a PR touches on its own
+(`evals/scripts/ci-detect.mjs`); a changed skill/agent that has no evals yet is logged as
+`SKIP … (no evals)`, not failed. Fork PRs get only the free static gate: the model-backed jobs need
+the `OPENROUTER_API_KEY` secret, which GitHub does not pass to forks.
 
 ## Gotchas
 - The server does **not** apply DB migrations on boot — `relation does not exist` errors mean run `cd server && pnpm db:migrate`.
@@ -44,5 +65,6 @@ and web run on the host.
 ## Docs
 - Quick start & architecture overview: [README.md](README.md)
 - Testing & CI strategy: [TESTING.md](TESTING.md)
+- Harness evals (skills / agents / workflow): [evals/README.md](evals/README.md)
 - Agent/reviewer prompt reference: `docs/agent-prompts/`
 - Per-package depth (stack, map, gotchas, do-not-touch, Docs/Specs/Insights): each package's own `AGENTS.md`

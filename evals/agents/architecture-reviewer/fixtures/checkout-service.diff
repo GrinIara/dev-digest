@@ -1,0 +1,38 @@
+diff --git a/server/src/vendor/shared/contracts/checkout.ts b/server/src/vendor/shared/contracts/checkout.ts
+index 1a2b3c4..5d6e7f8 100644
+--- a/server/src/vendor/shared/contracts/checkout.ts
++++ b/server/src/vendor/shared/contracts/checkout.ts
+@@ -1,11 +1,16 @@
+ import { z } from "zod";
++import { FastifyReply } from "fastify";
+
+ export const CheckoutOrder = z.object({
+   id: z.string(),
+   total: z.number().nonnegative(),
+ });
+ export type CheckoutOrder = z.infer<typeof CheckoutOrder>;
+
+ export function priceOrder(order: CheckoutOrder): number {
+   return order.total;
+ }
++
++export function rejectCheckout(reply: FastifyReply, reason: string) {
++  return reply.code(422).send({ error: reason });
++}
+diff --git a/server/src/modules/checkout/service.ts b/server/src/modules/checkout/service.ts
+index 9a8b7c6..3d2e1f0 100644
+--- a/server/src/modules/checkout/service.ts
++++ b/server/src/modules/checkout/service.ts
+@@ -1,8 +1,12 @@
+ import { priceOrder, type CheckoutOrder } from "../../vendor/shared/contracts/checkout.js";
++import { PgCheckoutRepository } from "../../adapters/postgres/checkout-repository.js";
+
+ export class CheckoutService {
++  private readonly orders = new PgCheckoutRepository();
++
+   async checkout(order: CheckoutOrder) {
+     const total = priceOrder(order);
++    await this.orders.save(order.id, total);
+     return { id: order.id, total };
+   }
+ }

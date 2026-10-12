@@ -32,6 +32,7 @@ If a test wouldn't catch a class of regression we care about, we don't write it.
 | reviewer-core | `reviewer-core/` | unit (engine) | vitest | `reviewer-core.yml` | no |
 | mcp-server | `mcp-server/` | unit (hermetic, in-memory MCP client, fake API) | vitest | `mcp-server.yml` | no |
 | e2e web | `e2e/` | browser e2e (deterministic) | agent-browser + `run.ts` | `e2e-web.yml` | yes (stack) |
+| evals | `evals/` | harness evals (skills / agents / workflow), LLM on OpenRouter — only the suites a PR touches | vitest + Claude Agent SDK | `evals.yml` | yes (LiteLLM proxy) |
 
 ## What each suite covers
 

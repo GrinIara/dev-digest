@@ -1,7 +1,7 @@
 # e2e — agent map
 
 ## Session protocol
-Before working in this module, read `Insights.md`. When a session surfaces a substantial, non-obvious finding, use the `engineering-insights` skill to append it (skip if nothing new).
+Your first action in this module — before opening any of its code, even for a read-only question or a quick explanation — is to read `Insights.md` in full. When a session surfaces a substantial, non-obvious finding, use the `engineering-insights` skill to append it (skip if nothing new).
 
 ## Stack
 TypeScript 5.7 · tsx runtime · Vercel **agent-browser** CLI (Rust + CDP). No
@@ -15,6 +15,7 @@ Playwright, no LLM, no API key.
 
 ## Map
 - `specs/NN-name.flow.json` — one JSON step-list per flow, run in order
+- `specs/flows.md` — what each flow asserts + the shared `specs/fixtures/` (pulled in via `{ "use": ... }` steps); not summarized here
 - `run.ts` — executes all flows against one shared browser session
 - `lib/` — runner helpers
 - `agent-browser.json` — CLI config
@@ -40,5 +41,5 @@ Playwright, no LLM, no API key.
 ## Read When
 - Usage, flow anatomy & coverage table → [README.md](README.md)
 - Touching the flow runner itself (`run.ts`/`lib/`) → `docs/architecture.md`
-- Adding/changing a flow → `specs/flows.md` (alongside the `*.flow.json` it documents)
+- Adding/changing a flow, or asked what to know before doing so → open `specs/flows.md` yourself (Read it) before you answer or edit — don't just point the user to it; this map does not cover existing flows or the reusable fixtures, so answering from it alone duplicates steps or breaks run order
 - Decisions & gotchas log → `Insights.md`

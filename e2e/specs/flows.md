@@ -24,7 +24,7 @@ Loads `/agents` and confirms the seeded "Security Reviewer" agent card renders.
 Uses `gotoPr482`, then opens the "Agent runs" tab and verifies the newest review run's accordion (open by default) shows its verdict ("request changes"), its finding count ("2 findings"), and the specific seeded finding "Hardcoded Stripe secret key in commit". Same single-repo assumption as `02`.
 
 ## `05-pr-diff.flow.json`
-Uses `gotoPr482`, then opens the "Files changed" tab and verifies the diff viewer renders the seeded changed file `src/config.ts`. Same single-repo assumption as `02`.
+Uses `gotoPr482`, then opens the "Files changed" tab, switches from the default "Smart order" (collapsed role groups, no file paths visible) to "Original order", and verifies the diff viewer renders the seeded changed file `src/config.ts`. Same single-repo assumption as `02`.
 
 ## `06-onboarding.flow.json`
 Loads `/onboarding` and verifies the add-repository form renders (heading + the "Repository URL" field) — no submission is performed, so this flow never mutates state.

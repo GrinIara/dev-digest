@@ -1,0 +1,283 @@
+/**
+ * Case types + the runners that turn a data array into vitest tests. This module owns the ONE
+ * true measure → (log) → assert body, so case authors never rewrite it — which is exactly what
+ * keeps the "assert before record" bug from recurring once record() lands (T2 slots into the
+ * marked spot below, in this one file).
+ */
+
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { test, expect } from "vitest";
+import { DEFAULT_THRESHOLD } from "../config.js";
+import { skillTask, agentTask, workflowTask } from "../tasks.js";
+import { runClaude, type Result, type RunOptions } from "../runtime/run-claude.js";
+import { patternMatch } from "../scoring/pattern-match.js";
+import { llmJudge, type Verdict } from "../scoring/llm-judge.js";
+import { writeDossier } from "../scoring/write-dossier.js";
+import { logTrace, logVerdict } from "../logging/log.js";
+import { record } from "../records/record.js";
+
+// --- Case shapes ------------------------------------------------------------
+
+/** A judge-and-grounding case. Same shape for skills and agents; only the task differs. */
+export interface QualityCase {
+  name: string;
+  kind?: "quality" | "grounding";
+  prompt: string;
+  /** Practices the judge scores (quality). Omit for a pure grounding case. */
+  practices?: string[];
+  /** Substrings that must ALL appear before the judge runs (cheap-tier gate). */
+  grounding?: string[];
+  /** Judge score gate (default 0.6). */
+  threshold?: number;
+  maxTurns?: number;
+  /** Per-test timeout in ms (default: vitest testTimeout). For cases with very long outputs. */
+  timeoutMs?: number;
+}
+export type SkillCase = QualityCase;
+export type AgentCase = QualityCase;
+
+/** A trace-asserted workflow case — a discriminated union routed by `kind`. */
+export type WorkflowCase =
+  | { kind: "dispatch"; name: string; prompt: string; expectSubagent: string; maxTurns?: number }
+  | {
+      kind: "activation";
+      name: string;
+      prompt: string;
+      skill: string;
+      shouldActivate: boolean;
+      /**
+       * Judge what the session TRIED to persist. Writes are refused by the read-only isolation, but
+       * the attempted Write/Edit text is kept; the judge gets a dossier (user prompt, the files the
+       * session read, the attempted write, the write status, the final answer) and scores these
+       * practices. It runs even when no write was attempted: asking the user for evidence is a valid
+       * outcome, and claiming "recorded" without any write is exactly what must be caught.
+       */
+      writePractices?: string[];
+      /** Judge score gate for writePractices (default 0.6). */
+      threshold?: number;
+      /**
+       * false → a failed writePractices verdict is reported (warning; ::warning:: on GitHub Actions)
+       * and recorded as a failure, but does not fail the test. The activation check stays blocking.
+       * For judged behaviour a cheap model gets wrong too often to gate every PR on. Default true.
+       */
+      writeBlocking?: boolean;
+      maxTurns?: number;
+    }
+  | {
+      kind: "contrast";
+      name: string;
+      prompt: string;
+      expectFileRead: string;
+      tools?: string[];
+      maxTurns?: number;
+    }
+  | {
+      // A single-session composite: run ONE workflowTask and assert several trace facets at once.
+      // Cheaper than separate dispatch/activation/contrast cases (one session, not N) at the cost
+      // of coarser diagnostics and no control run — use contrast when you must isolate CLAUDE.md's
+      // contribution. Every provided expectation must hold; omitted fields are not checked.
+      kind: "trace";
+      name: string;
+      prompt: string;
+      expectSubagents?: string[];
+      expectSkills?: string[];
+      expectFilesRead?: string[];
+      /** Substrings that must NOT appear in any read path (routing precision, e.g. no cross-package reads). */
+      expectNotRead?: string[];
+      /**
+       * Patterns the final answer must contain / must not contain. A string is a case-insensitive
+       * substring. Setting either disables the early stop — the answer only exists once the session ends.
+       */
+      expectText?: Array<string | RegExp>;
+      forbidText?: Array<string | RegExp>;
+      maxTurns?: number;
+      /** Per-test timeout in ms (default: vitest testTimeout). For sessions that dispatch a subagent. */
+      timeoutMs?: number;
+    };
+
+/** Did a skill engage? Either an explicit Skill tool-call, or reading its SKILL.md. */
+export function activated(result: Result, skill: string): boolean {
+  const bySkill = result.skillsInvoked.some((s) => s === skill || s.endsWith(`:${skill}`));
+  const byRead = result.filesRead.some((f) => f.includes(`skills/${skill}/SKILL.md`));
+  return bySkill || byRead;
+}
+
+// --- Runners ----------------------------------------------------------------
+
+type Task = (prompt: string, artifact: string, opts?: RunOptions) => Promise<Result>;
+
+function runQualityCases(artifact: string, cases: QualityCase[], task: Task): void {
+  for (const c of cases) {
+    test(c.name, async () => {
+      const threshold = c.threshold ?? DEFAULT_THRESHOLD;
+      const result = await task(c.prompt, artifact, { maxTurns: c.maxTurns });
+      logTrace(c.name, result);
+
+      // measure → record → assert. Everything measurable runs in the try; record() fires in the
+      // finally with whatever accumulated; the asserts happen strictly after. A failing config
+      // (e.g. baseline: grounding gate fails, judge skipped) still leaves a record.
+      let grounded: number | undefined;
+      let verdict: Verdict | undefined;
+      try {
+        // Cheap deterministic tier first — the grounding gate. When it fails the judge is skipped.
+        if (c.grounding?.length) grounded = patternMatch(result.text, c.grounding);
+        if (c.practices?.length && (grounded === undefined || grounded === 1)) {
+          verdict = await llmJudge(result.text, c.practices);
+          logVerdict(c.name, verdict);
+        }
+      } finally {
+        record(c.name, { result, verdict, grounded, threshold });
+      }
+
+      if (grounded !== undefined) {
+        expect(grounded, `missing concrete evidence; output:\n${result.text}`).toBe(1);
+      }
+      if (verdict) {
+        expect(verdict.score, JSON.stringify(verdict.results)).toBeGreaterThanOrEqual(threshold);
+      }
+    }, c.timeoutMs);
+  }
+}
+
+export const runSkillCases = (skill: string, cases: SkillCase[]) => runQualityCases(skill, cases, skillTask);
+export const runAgentCases = (agent: string, cases: AgentCase[]) => runQualityCases(agent, cases, agentTask);
+
+/** One named workflow check: computed before record(), asserted after it. */
+interface Check {
+  ok: boolean;
+  msg: string;
+  /** Reported and recorded, but never fails the test. */
+  advisory?: boolean;
+}
+
+/**
+ * measure → record → assert for the workflow tier. The record's outcome is the checks' verdict,
+ * not "the session didn't error" — otherwise a trace whose asserts fail would be counted as a
+ * pass by eval:repeat / eval:delta. Soft asserts report every failed check at once.
+ */
+function recordAndAssert(
+  label: string,
+  result: Result,
+  checks: Check[],
+  judged?: { verdict?: Verdict; threshold: number },
+): void {
+  record(label, { result, passed: checks.every((c) => c.ok), verdict: judged?.verdict, threshold: judged?.threshold });
+  for (const c of checks) {
+    if (!c.advisory) {
+      expect.soft(c.ok, c.msg).toBe(true);
+    } else if (!c.ok) {
+      console.warn(`ADVISORY (non-blocking) ${label}: ${c.msg}`);
+      if (process.env.GITHUB_ACTIONS) console.log(`::warning title=non-blocking eval failed::${label}`);
+    }
+  }
+}
+
+export function runWorkflowCases(cases: WorkflowCase[]): void {
+  for (const c of cases) {
+    test(c.name, async () => {
+      if (c.kind === "dispatch") {
+        // Stop the moment the subagent is launched — no need to wait out its nested session.
+        const expect1 = c.expectSubagent;
+        const result = await workflowTask(c.prompt, {
+          maxTurns: c.maxTurns,
+          stopWhen: (p) => p.subagents.includes(expect1),
+        });
+        logTrace(c.name, result);
+        recordAndAssert(c.name, result, [
+          {
+            ok: result.subagents.includes(c.expectSubagent),
+            msg: `${c.expectSubagent} not dispatched | subagents: ${result.subagents.join(", ")}`,
+          },
+        ]);
+      } else if (c.kind === "activation") {
+        const result = await workflowTask(c.prompt, { maxTurns: c.maxTurns });
+        logTrace(c.name, result);
+        const checks: Check[] = [
+          {
+            ok: activated(result, c.skill) === c.shouldActivate,
+            msg: `${c.skill} expected activated=${c.shouldActivate} | skills: ${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,
+          },
+        ];
+        let judged: { verdict?: Verdict; threshold: number } | undefined;
+        if (c.writePractices?.length) {
+          const threshold = c.threshold ?? DEFAULT_THRESHOLD;
+          const verdict = await llmJudge(writeDossier(c.prompt, result), c.writePractices);
+          logVerdict(c.name, verdict);
+          judged = { verdict, threshold };
+          checks.push({
+            ok: verdict.score >= threshold,
+            msg: `write judged ${verdict.passed}/${verdict.total} < ${threshold}: ${JSON.stringify(verdict.results)}`,
+            advisory: c.writeBlocking === false,
+          });
+        }
+        recordAndAssert(c.name, result, checks, judged);
+      } else if (c.kind === "trace") {
+        // One session, many checks — every provided expectation is checked against the same trace.
+        // Stop as soon as ALL read/dispatch/skill expectations are satisfied, so a dispatch-bearing
+        // trace doesn't pay for the nested subagent's full run.
+        const subs = c.expectSubagents ?? [];
+        const skls = c.expectSkills ?? [];
+        const files = c.expectFilesRead ?? [];
+        const notRead = c.expectNotRead ?? [];
+        const mustSay = c.expectText ?? [];
+        const mustNotSay = c.forbidText ?? [];
+        const skillEngaged = (p: { skillsInvoked: string[]; filesRead: string[] }, skill: string) =>
+          p.skillsInvoked.some((s) => s === skill || s.endsWith(`:${skill}`)) ||
+          p.filesRead.some((f) => f.includes(`skills/${skill}/SKILL.md`));
+        const hasText = mustSay.length > 0 || mustNotSay.length > 0;
+        const result = await workflowTask(c.prompt, {
+          maxTurns: c.maxTurns,
+          stopWhen: hasText
+            ? undefined
+            : (p) =>
+                subs.every((s) => p.subagents.includes(s)) &&
+                skls.every((s) => skillEngaged(p, s)) &&
+                files.every((f) => p.filesRead.some((r) => r.includes(f))),
+        });
+        logTrace(c.name, result);
+        const reads = `reads: ${result.filesRead.join(", ")}`;
+        const wasRead = (f: string) => result.filesRead.some((r) => r.includes(f));
+        const says = (p: string | RegExp) =>
+          typeof p === "string" ? result.text.toLowerCase().includes(p.toLowerCase()) : p.test(result.text);
+        recordAndAssert(c.name, result, [
+          ...subs.map((sub) => ({
+            ok: result.subagents.includes(sub),
+            msg: `${sub} not dispatched | subagents: ${result.subagents.join(", ")}`,
+          })),
+          ...skls.map((skill) => ({
+            ok: activated(result, skill),
+            msg: `skill ${skill} not engaged | skills: ${result.skillsInvoked.join(", ")} | ${reads}`,
+          })),
+          ...files.map((f) => ({ ok: wasRead(f), msg: `${f} not read | ${reads}` })),
+          ...notRead.map((f) => ({ ok: !wasRead(f), msg: `${f} read but must not be | ${reads}` })),
+          ...mustSay.map((p) => ({ ok: says(p), msg: `answer lacks ${p}; output:\n${result.text}` })),
+          ...mustNotSay.map((p) => ({ ok: !says(p), msg: `answer contains forbidden ${p}; output:\n${result.text}` })),
+          { ok: !result.isError, msg: "session ended in error (e.g. hit maxTurns)" },
+        ]);
+      } else {
+        // contrast: treatment (real harness) vs control (empty tmpdir, no on-disk config).
+        const tools = c.tools ?? ["Read", "Grep", "Glob"];
+        const treatment = await workflowTask(c.prompt, { allowedTools: tools, maxTurns: c.maxTurns });
+        const emptyCwd = mkdtempSync(join(tmpdir(), "eval-control-"));
+        const control = await runClaude(c.prompt, {
+          allowedTools: tools,
+          maxTurns: c.maxTurns,
+          cwd: emptyCwd,
+          settingSources: [],
+        });
+        logTrace(`${c.name} [treatment]`, treatment);
+        logTrace(`${c.name} [control]`, control);
+        const treatmentRead = treatment.filesRead.some((f) => f.includes(c.expectFileRead));
+        const controlRead = control.filesRead.some((f) => f.includes(c.expectFileRead));
+        recordAndAssert(`${c.name} [treatment]`, treatment, [
+          { ok: treatmentRead, msg: `treatment reads: ${treatment.filesRead.join(", ")}` },
+        ]);
+        recordAndAssert(`${c.name} [control]`, control, [
+          { ok: !controlRead, msg: `control reads: ${control.filesRead.join(", ")}` },
+        ]);
+      }
+    }, "timeoutMs" in c ? c.timeoutMs : undefined);
+  }
+}

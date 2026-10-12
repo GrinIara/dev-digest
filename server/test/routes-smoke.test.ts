@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
-import { MockGitHubClient, MockLLMProvider } from '../src/adapters/mocks.js';
+import { MockAuthProvider, MockGitHubClient, MockLLMProvider } from '../src/adapters/mocks.js';
 
 /**
  * No-DB route smoke tests via app.inject(). `/health` and the validation/error
  * envelope don't touch the database (postgres-js connects lazily), so these run
- * without Docker. DB-backed routes are covered in integration.test.ts.
+ * without Docker. DB-backed routes are covered in integration.test.ts. Routes that call
+ * getContext() need `auth: new MockAuthProvider()` — the default LocalNoAuthProvider queries the DB,
+ * so without it they pass only on a machine with a dev Postgres running.
  */
 const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
 
@@ -22,7 +24,7 @@ describe('routes (no DB)', () => {
   it('POST /settings/test-connection (github) returns structured ConnTestResult', async () => {
     const app = await buildApp({
       config,
-      overrides: { github: new MockGitHubClient({ login: 'octocat' }) },
+      overrides: { auth: new MockAuthProvider(), github: new MockGitHubClient({ login: 'octocat' }) },
     });
     const res = await app.inject({
       method: 'POST',
@@ -41,6 +43,7 @@ describe('routes (no DB)', () => {
     const app = await buildApp({
       config,
       overrides: {
+        auth: new MockAuthProvider(),
         llm: { openai: new MockLLMProvider('openai', { models: [{ id: 'gpt-4.1', provider: 'openai' }] }) },
       },
     });
